@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --primary: #1B2A6B;
+    --primary-dark: #131E4D;
+    --primary-light: #263C96;
+    --accent: #D62828;
+    --accent-hover: #B71C1C;
+    --surface: #F3F4F6;
+    --text-main: #1F2937;
+    --success: #16A34A;
+    --warning: #F59E0B;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    color: var(--text-main);
+    background-color: #F8FAFC;
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-heading {
+    font-family: 'Poppins', sans-serif;
+  }
+}
+
+/* Custom utility colors */
+.bg-navy { background-color: #1B2A6B; }
+.bg-navy-dark { background-color: #131E4D; }
+.bg-navy-light { background-color: #263C96; }
+.text-navy { color: #1B2A6B; }
+.border-navy { border-color: #1B2A6B; }
+
+.bg-accent-red { background-color: #D62828; }
+.bg-accent-red-hover:hover { background-color: #B71C1C; }
+.text-accent-red { color: #D62828; }
+.border-accent-red { border-color: #D62828; }
+
+/* Custom snappy scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
