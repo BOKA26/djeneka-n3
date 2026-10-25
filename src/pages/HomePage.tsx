@@ -27,6 +27,7 @@ import {
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
+import { InteractiveMap } from '../components/common/InteractiveMap';
 import { QuoteModal } from '../components/services/QuoteModal';
 import { servicesApi, rentalsApi, reviewsApi } from '../services/api';
 import { ServiceItem, RentalVehicle, Review } from '../types';
@@ -53,7 +54,6 @@ export const HomePage: React.FC = () => {
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [selectedServiceForQuote, setSelectedServiceForQuote] = useState<string | undefined>();
   const [reviewIndex, setReviewIndex] = useState(0);
-  const [isMapActive, setIsMapActive] = useState(false);
 
   useEffect(() => {
     servicesApi.getAll().then((data) => {
@@ -542,88 +542,7 @@ export const HomePage: React.FC = () => {
 
       {/* 8. CARTE DE LOCALISATION & ACCÈS */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden grid grid-cols-1 lg:grid-cols-12">
-          {/* Info Side */}
-          <div className="lg:col-span-5 p-6 sm:p-8 space-y-6 flex flex-col justify-between">
-            <div className="space-y-4">
-              <Badge variant="navy">Plan d'Accès</Badge>
-              <h2 className="text-2xl sm:text-3xl font-extrabold font-heading text-[#1B2A6B]">
-                Comment Venir à l'Atelier ?
-              </h2>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                Situé à Bingerville, secteur Adjin Palmeraie. Accès facile depuis le nouveau goudron menant à la lagune, parking client spacieux et sécurisé.
-              </p>
-
-              <div className="space-y-3 text-xs sm:text-sm text-slate-700 pt-2">
-                <div className="flex items-start gap-2.5">
-                  <MapPin className="w-4 h-4 text-[#D62828] shrink-0 mt-0.5" />
-                  <span>
-                    <strong>Adresse :</strong> Bingerville, Adjin Palmeraie (repère : Carrefour Pharmacie Adjin).
-                  </span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <Phone className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>
-                    <strong>Téléphone atelier :</strong> +225 07 78 03 03 75
-                  </span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <Clock className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>
-                    <strong>Horaires :</strong> 07h30 - 18h30 (Lundi au Samedi)
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2.5 pt-4">
-              <a
-                href="https://maps.google.com/?q=Bingerville+Adjin+Cote+d+Ivoire"
-                target="_blank"
-                rel="noreferrer"
-                className="w-full"
-              >
-                <Button variant="primary" className="w-full text-xs">
-                  Ouvrir sur Google Maps
-                </Button>
-              </a>
-              <a href="tel:+2250778030375" className="w-full">
-                <Button variant="outline" className="w-full text-xs">
-                  Guider par Téléphone
-                </Button>
-              </a>
-            </div>
-          </div>
-
-          {/* Interactive Map Visual with Scroll Protection */}
-          <div className="lg:col-span-7 bg-slate-100 min-h-[320px] relative rounded-2xl overflow-hidden group">
-            <iframe
-              title="Carte Officina Djeneka Bingerville"
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d63557.54011681944!2d-3.921616!3d5.358249!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xfc194bb8d453001%3A0x6b49e8ba31c79e6!2sBingerville%2C%20C%C3%B4te%20d&#39;Ivoire!5e0!3m2!1sfr!2sci!4v1710000000000!5m2!1sfr!2sci"
-              className={`w-full h-full min-h-[320px] border-0 ${isMapActive ? 'pointer-events-auto' : 'pointer-events-none'}`}
-              loading="lazy"
-            />
-            {!isMapActive && (
-              <div
-                onClick={() => setIsMapActive(true)}
-                className="absolute inset-0 bg-slate-900/10 hover:bg-slate-900/20 flex items-center justify-center cursor-pointer transition-colors"
-                title="Cliquer pour activer le zoom sur la carte"
-              >
-                <span className="bg-white/95 text-slate-800 text-xs font-bold px-3.5 py-2 rounded-xl shadow-md border border-slate-200">
-                  📍 Cliquez pour naviguer sur la carte
-                </span>
-              </div>
-            )}
-            {isMapActive && (
-              <button
-                onClick={() => setIsMapActive(false)}
-                className="absolute top-3 right-3 bg-white/95 text-slate-700 text-xs font-bold px-2.5 py-1.5 rounded-lg shadow-md border border-slate-200 cursor-pointer"
-              >
-                Figer la carte (défiler)
-              </button>
-            )}
-          </div>
-        </div>
+        <InteractiveMap height="h-[380px]" />
       </section>
 
       {/* 9. FINAL CALL TO ACTION */}

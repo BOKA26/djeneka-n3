@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
+import { InteractiveMap } from '../components/common/InteractiveMap';
 import { validateIvorianPhone } from '../utils/format';
 import { useToast } from '../context/ToastContext';
 
@@ -23,7 +24,6 @@ export const ContactPage: React.FC = () => {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [isMapActive, setIsMapActive] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -244,43 +244,8 @@ export const ContactPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Embedded Map */}
-      <div className="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-sm overflow-hidden space-y-3">
-        <div className="flex items-center justify-between px-2 pt-1">
-          <h3 className="font-heading font-bold text-base text-slate-900 flex items-center gap-2">
-            <Navigation className="w-5 h-5 text-[#D62828]" />
-            Localisation Satellite & Itinéraire
-          </h3>
-          <span className="text-xs text-slate-500">Bingerville Adjin Palmeraie</span>
-        </div>
-        <div className="h-80 rounded-2xl overflow-hidden bg-slate-100 relative group">
-          <iframe
-            title="Google Map Officina Djeneka Bingerville"
-            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d63557.54011681944!2d-3.921616!3d5.358249!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xfc194bb8d453001%3A0x6b49e8ba31c79e6!2sBingerville%2C%20C%C3%B4te%20d&#39;Ivoire!5e0!3m2!1sfr!2sci!4v1710000000000!5m2!1sfr!2sci"
-            className={`w-full h-full border-0 ${isMapActive ? 'pointer-events-auto' : 'pointer-events-none'}`}
-            loading="lazy"
-          />
-          {!isMapActive && (
-            <div
-              onClick={() => setIsMapActive(true)}
-              className="absolute inset-0 bg-slate-900/10 hover:bg-slate-900/20 flex items-center justify-center cursor-pointer transition-colors"
-              title="Cliquer pour activer le zoom sur la carte"
-            >
-              <span className="bg-white/95 text-slate-800 text-xs font-bold px-3.5 py-2 rounded-xl shadow-md border border-slate-200">
-                📍 Cliquez pour naviguer sur la carte
-              </span>
-            </div>
-          )}
-          {isMapActive && (
-            <button
-              onClick={() => setIsMapActive(false)}
-              className="absolute top-3 right-3 bg-white/95 text-slate-700 text-xs font-bold px-2.5 py-1.5 rounded-lg shadow-md border border-slate-200 cursor-pointer"
-            >
-              Figer la carte (défiler)
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Interactive Map */}
+      <InteractiveMap height="h-[380px]" />
     </div>
   );
 };

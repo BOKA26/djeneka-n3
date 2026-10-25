@@ -1,9 +1,7 @@
 {
   "name": "Remix Remix Officina Djeneka - Garage Moderne",
   "description": "Site officiel du garage Officina Djeneka (Garage Moderne) à Bingerville Adjin Palmeraie : mécanique, diagnostic, pièces détachées, location de véhicules et dépannage urgent 24/7.",
-  "requestFramePermissions": [
-    "geolocation"
-  ],
+  "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

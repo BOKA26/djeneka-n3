@@ -11,6 +11,7 @@ import {
   Loader2,
   Navigation,
   Check,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
@@ -36,30 +37,96 @@ export const EmergencyPage: React.FC = () => {
   // Active tracking state
   const [activeRequest, setActiveRequest] = useState<EmergencyRequest | null>(null);
 
-  // Ask for geolocation
+  // Ask for geolocation with robust two-tier fallback and reverse geocoding
   const handleRequestGeolocation = () => {
-    if (!navigator.geolocation) {
-      showToast('La géolocalisation n’est pas supportée par votre navigateur.', 'warning');
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      showToast('La géolocalisation n’est pas disponible sur votre navigateur.', 'warning');
       return;
     }
+
+    if (window.isSecureContext === false) {
+      showToast('La géolocalisation exige une connexion HTTPS sécurisée.', 'warning');
+      return;
+    }
+
     setGeolocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setCoordinates({ lat: latitude, lng: longitude });
-        setGeolocSuccess(true);
-        setGeolocating(false);
-        if (!locationName) {
-          setLocationName(`Position GPS détectée (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+
+    const onLocationSuccess = async (position: GeolocationPosition) => {
+      const { latitude, longitude, accuracy } = position.coords;
+      setCoordinates({ lat: latitude, lng: longitude });
+      setGeolocSuccess(true);
+      setGeolocating(false);
+
+      // Attempt reverse geocoding via OpenStreetMap with a 3s timeout
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=16&addressdetails=1`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          const road = data.address?.road || data.address?.suburb || data.address?.neighbourhood || '';
+          const city = data.address?.city || data.address?.town || data.address?.municipality || 'Bingerville';
+          const formatted = road ? `${road}, ${city}` : (data.display_name ? data.display_name.split(',').slice(0, 3).join(',') : '');
+          if (formatted) {
+            setLocationName(formatted);
+            showToast(`Position captée : ${formatted}`, 'success');
+            return;
+          }
         }
-        showToast('Position GPS captée avec succès !', 'success');
+      } catch {
+        // Fallback silently if reverse-geocoding fails
+      }
+
+      if (!locationName || locationName.startsWith('Position GPS')) {
+        setLocationName(`Position GPS (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`);
+      }
+      showToast(`Position GPS captée avec succès (précision ~${Math.round(accuracy)}m) !`, 'success');
+    };
+
+    const handleFinalError = (error: GeolocationPositionError) => {
+      setGeolocating(false);
+      setGeolocSuccess(false);
+
+      if (error.code === 1) { // PERMISSION_DENIED
+        showToast(
+          'Accès GPS refusé par le navigateur. Activez la géolocalisation dans vos paramètres ou saisissez votre quartier manuellement.',
+          'warning'
+        );
+      } else if (error.code === 2) { // POSITION_UNAVAILABLE
+        showToast(
+          'Signal GPS indisponible. Vérifiez que la localisation de votre appareil est activée.',
+          'warning'
+        );
+      } else if (error.code === 3) { // TIMEOUT
+        showToast(
+          'Délai GPS dépassé. Veuillez saisir manuellement votre quartier ou carrefour.',
+          'info'
+        );
+      } else {
+        showToast('Impossible de capter la position. Renseignez votre quartier manuellement.', 'info');
+      }
+    };
+
+    // First attempt: try high accuracy with cached position support (maxAge 1 min)
+    navigator.geolocation.getCurrentPosition(
+      onLocationSuccess,
+      (err) => {
+        // If high accuracy failed due to timeout or unavailability, retry with network-based geolocation
+        if (err.code === 2 || err.code === 3) {
+          navigator.geolocation.getCurrentPosition(
+            onLocationSuccess,
+            handleFinalError,
+            { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 }
+          );
+        } else {
+          handleFinalError(err);
+        }
       },
-      (error) => {
-        setGeolocating(false);
-        setGeolocSuccess(false);
-        showToast('Localisation refusée. Veuillez saisir votre quartier ou repère manuellement.', 'info');
-      },
-      { timeout: 10000, enableHighAccuracy: true }
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
     );
   };
 
@@ -304,6 +371,23 @@ export const EmergencyPage: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {coordinates && (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl px-3.5 py-2 mt-1">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Point GPS verrouillé : {coordinates.lat.toFixed(5)}, {coordinates.lng.toFixed(5)}</span>
+                  </span>
+                  <a
+                    href={`https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:text-emerald-900 underline"
+                  >
+                    Vérifier sur la carte <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* 2. CHOOSE BREAKDOWN TYPE */}
