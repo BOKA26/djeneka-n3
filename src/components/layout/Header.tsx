@@ -3,7 +3,6 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Logo } from '../common/Logo';
 import { Button } from '../common/Button';
 import { useAuth } from '../../context/AuthContext';
-import { SupabaseModal } from '../common/SupabaseModal';
 import {
   Phone,
   AlertTriangle,
@@ -14,13 +13,11 @@ import {
   ChevronDown,
   LayoutDashboard,
   Shield,
-  Database,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
-  const [supabaseModalOpen, setSupabaseModalOpen] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -57,16 +54,6 @@ export const Header: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Supabase status badge button */}
-              <button
-                onClick={() => setSupabaseModalOpen(true)}
-                className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 text-[11px] font-medium transition-colors cursor-pointer"
-                title="Gérer la connexion Supabase et les tables"
-              >
-                <Database className="w-3 h-3 text-emerald-400" />
-                <span>Base Supabase</span>
-              </button>
-
               <a
                 href="tel:+2250778030375"
                 className="flex items-center gap-1.5 text-blue-100 hover:text-white font-medium transition-colors"
@@ -164,14 +151,6 @@ export const Header: React.FC = () => {
                     )}
 
                     <button
-                      onClick={() => setSupabaseModalOpen(true)}
-                      className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-emerald-700 hover:bg-emerald-50 text-left font-medium cursor-pointer"
-                    >
-                      <Database className="w-4 h-4 text-emerald-600" />
-                      Base Supabase
-                    </button>
-
-                    <button
                       onClick={handleLogout}
                       className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-rose-600 hover:bg-rose-50 text-left font-medium cursor-pointer"
                     >
@@ -235,18 +214,6 @@ export const Header: React.FC = () => {
             </div>
 
             <div className="pt-4 flex flex-col gap-2.5">
-              {/* Supabase Button on mobile */}
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  setSupabaseModalOpen(true);
-                }}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-xs transition-colors"
-              >
-                <Database className="w-4 h-4 text-emerald-600" />
-                <span>Base de données Supabase</span>
-              </button>
-
               {user ? (
                 <>
                   <Link
@@ -275,9 +242,6 @@ export const Header: React.FC = () => {
           </div>
         )}
       </header>
-
-      {/* Supabase Connection Modal */}
-      <SupabaseModal isOpen={supabaseModalOpen} onClose={() => setSupabaseModalOpen(false)} />
     </>
   );
 };
