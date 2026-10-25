@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Logo } from '../common/Logo';
 import { Button } from '../common/Button';
 import { useAuth } from '../../context/AuthContext';
+import { useSiteSettings } from '../../context/SiteSettingsContext';
 import {
   Phone,
   AlertTriangle,
@@ -13,12 +14,14 @@ import {
   ChevronDown,
   LayoutDashboard,
   Shield,
+  Sparkles,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const { user, logout } = useAuth();
+  const { settings } = useSiteSettings();
   const navigate = useNavigate();
 
   const navLinks = [
@@ -39,27 +42,35 @@ export const Header: React.FC = () => {
 
   return (
     <>
+      {/* Dynamic Announcement Banner */}
+      {settings.bandeau_actif && settings.message_bandeau && (
+        <aside aria-label="Annonce" className="bg-linear-to-r from-[#D62828] to-[#B71C1C] text-white text-xs py-2 px-4 text-center font-semibold shadow-xs flex items-center justify-center gap-2">
+          <Sparkles className="w-3.5 h-3.5 shrink-0 animate-pulse text-amber-200" />
+          <span>{settings.message_bandeau}</span>
+        </aside>
+      )}
+
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
-        {/* Top micro-bar for quick contact & Supabase status */}
+        {/* Top micro-bar for quick contact */}
         <div className="bg-[#1B2A6B] text-white text-xs py-1.5 px-4 hidden md:block">
           <div className="max-w-7xl mx-auto flex justify-between items-center">
             <div className="flex items-center gap-6">
               <span className="flex items-center gap-1.5 text-blue-200">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Garage Ouvert : Lun - Sam 7h30 - 18h30
+                {settings.horaires?.lundi ? `Garage Ouvert : Lun - Sam ${settings.horaires.lundi}` : 'Garage Ouvert : 7h30 - 18h30'}
               </span>
               <span className="text-blue-100">
-                📍 Bingerville, Adjin Palmeraie (Côte d'Ivoire)
+                📍 {settings.adresse || 'Bingerville, Adjin Palmeraie'}
               </span>
             </div>
 
             <div className="flex items-center gap-4">
               <a
-                href="tel:+2250778030375"
+                href={`tel:${settings.telephone_principal}`}
                 className="flex items-center gap-1.5 text-blue-100 hover:text-white font-medium transition-colors"
               >
                 <Phone className="w-3.5 h-3.5 text-emerald-400" />
-                +225 07 78 03 03 75
+                {settings.telephone_principal || '+225 07 78 03 03 75'}
               </a>
             </div>
           </div>

@@ -15,7 +15,12 @@ import {
   ReservationStatus,
   EmergencyStatus,
   ServiceItem,
+  SiteSettings,
+  GalleryItem,
+  AuditLogEntry,
+  UserRole,
 } from '../types';
+import { MOCK_GALLERY } from '../data/gallery';
 
 import {
   testSupabaseConnection,
@@ -276,6 +281,77 @@ export const servicesApi = {
       popular: Boolean(data.populaire),
       highlights: data.points_forts || [],
     };
+  },
+
+  async create(data: Omit<ServiceItem, 'id'>): Promise<ServiceItem> {
+    const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') + '-' + Date.now();
+    const { data: created, error } = await supabase
+      .from('services')
+      .insert({
+        slug,
+        nom: data.name,
+        description: data.fullDesc || data.shortDesc,
+        icone: data.icon || 'Wrench',
+        duree_estimee: data.duration,
+        tarif_estime: data.priceEstimate,
+        populaire: Boolean(data.popular),
+        points_forts: data.highlights || [],
+        actif: true,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Erreur création service: ${error.message}`);
+    return {
+      id: created.id,
+      slug: created.slug,
+      name: created.nom,
+      icon: created.icone || 'Wrench',
+      shortDesc: created.description?.slice(0, 120) || '',
+      fullDesc: created.description,
+      priceEstimate: created.tarif_estime || 'Sur devis',
+      duration: created.duree_estimee || 'Variable',
+      popular: Boolean(created.populaire),
+      highlights: created.points_forts || [],
+    };
+  },
+
+  async update(id: string, updates: Partial<ServiceItem>): Promise<ServiceItem> {
+    const payload: Record<string, unknown> = {};
+    if (updates.name !== undefined) payload.nom = updates.name;
+    if (updates.fullDesc !== undefined) payload.description = updates.fullDesc;
+    else if (updates.shortDesc !== undefined) payload.description = updates.shortDesc;
+    if (updates.icon !== undefined) payload.icone = updates.icon;
+    if (updates.duration !== undefined) payload.duree_estimee = updates.duration;
+    if (updates.priceEstimate !== undefined) payload.tarif_estime = updates.priceEstimate;
+    if (updates.popular !== undefined) payload.populaire = updates.popular;
+    if (updates.highlights !== undefined) payload.points_forts = updates.highlights;
+
+    const { data, error } = await supabase
+      .from('services')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Erreur mise à jour service: ${error.message}`);
+    return {
+      id: data.id,
+      slug: data.slug,
+      name: data.nom,
+      icon: data.icone || 'Wrench',
+      shortDesc: data.description?.slice(0, 120) || '',
+      fullDesc: data.description,
+      priceEstimate: data.tarif_estime || 'Sur devis',
+      duration: data.duree_estimee || 'Variable',
+      popular: Boolean(data.populaire),
+      highlights: data.points_forts || [],
+    };
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('services').delete().eq('id', id);
+    if (error) throw new Error(`Erreur suppression service: ${error.message}`);
   },
 };
 
@@ -879,6 +955,57 @@ export const reservationsApi = {
   async cancel(id: string): Promise<Reservation> {
     return this.updateStatus(id, 'annulee');
   },
+
+  async update(id: string, updates: Partial<Reservation>): Promise<Reservation> {
+    const payload: Record<string, unknown> = {};
+    if (updates.status !== undefined) payload.statut = updates.status;
+    if (updates.startDate !== undefined) payload.date_debut = updates.startDate;
+    if (updates.endDate !== undefined) payload.date_fin = updates.endDate;
+    if (updates.totalDays !== undefined) payload.total_jours = updates.totalDays;
+    if (updates.pricePerDay !== undefined) payload.prix_jour = updates.pricePerDay;
+    if (updates.totalPrice !== undefined) payload.prix_total = updates.totalPrice;
+    if (updates.deposit !== undefined) payload.caution = updates.deposit;
+    if (updates.clientName !== undefined) payload.client_nom = updates.clientName;
+    if (updates.clientPhone !== undefined) payload.client_telephone = updates.clientPhone;
+    if (updates.clientEmail !== undefined) payload.client_email = updates.clientEmail;
+    if (updates.notes !== undefined) payload.notes = updates.notes;
+    if (updates.vehicleId !== undefined) payload.rental_vehicle_id = updates.vehicleId;
+
+    const { data, error } = await supabase
+      .from('reservations')
+      .update(payload)
+      .eq('id', id)
+      .select('*, rental_vehicles (nom, photos)')
+      .single();
+
+    if (error) throw new Error(`Erreur modification réservation: ${error.message}`);
+    return {
+      id: data.id,
+      vehicleId: data.rental_vehicle_id,
+      vehicleName: data.rental_vehicles?.nom || updates.vehicleName || 'Véhicule',
+      vehicleImage: data.rental_vehicles?.photos?.[0] || updates.vehicleImage || '',
+      userId: data.client_id,
+      clientName: data.client_nom,
+      clientPhone: data.client_telephone,
+      clientEmail: data.client_email,
+      startDate: data.date_debut,
+      endDate: data.date_fin,
+      totalDays: Number(data.total_jours || 1),
+      pricePerDay: Number(data.prix_jour || 0),
+      totalPrice: Number(data.prix_total || 0),
+      deposit: Number(data.caution || 0),
+      status: data.statut as ReservationStatus,
+      licenseFile: data.permis_url || undefined,
+      idCardFile: data.identite_url || undefined,
+      createdAt: data.created_at,
+      notes: data.notes || undefined,
+    };
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('reservations').delete().eq('id', id);
+    if (error) throw new Error(`Erreur suppression réservation: ${error.message}`);
+  },
 };
 
 /* ============================================================================
@@ -1002,6 +1129,11 @@ export const emergencyApi = {
       notes: details.notes || data.notes || undefined,
     };
   },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('requests').delete().eq('id', id);
+    if (error) throw new Error(`Erreur suppression dépannage: ${error.message}`);
+  },
 };
 
 /* ============================================================================
@@ -1086,6 +1218,11 @@ export const quotesApi = {
       .eq('id', id);
 
     if (error) throw new Error(error.message);
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('requests').delete().eq('id', id);
+    if (error) throw new Error(`Erreur suppression devis: ${error.message}`);
   },
 };
 
@@ -1426,6 +1563,45 @@ export const interventionsApi = {
       mechanicName: created.mecanicien_nom || 'Chef Mécanicien',
       notes: created.notes || '',
     };
+  },
+
+  async update(id: string, updates: Partial<Intervention>): Promise<Intervention> {
+    const payload: Record<string, unknown> = {};
+    if (updates.date !== undefined) payload.date = updates.date;
+    if (updates.mileage !== undefined) payload.kilometrage = updates.mileage;
+    if (updates.services !== undefined) payload.services = updates.services;
+    if (updates.partsChanged !== undefined) payload.pieces = updates.partsChanged;
+    if (updates.cost !== undefined) payload.cout = updates.cost;
+    if (updates.mechanicName !== undefined) payload.mecanicien_nom = updates.mechanicName;
+    if (updates.notes !== undefined) payload.notes = updates.notes;
+
+    const { data, error } = await supabase
+      .from('interventions')
+      .update(payload)
+      .eq('id', id)
+      .select('*, client_vehicles (marque, modele, plaque, owner_id)')
+      .single();
+
+    if (error) throw new Error(`Erreur mise à jour intervention: ${error.message}`);
+    return {
+      id: data.id,
+      clientId: data.client_vehicles?.owner_id || '',
+      vehicleId: data.vehicle_id,
+      vehicleName: data.client_vehicles ? `${data.client_vehicles.marque} ${data.client_vehicles.modele}` : 'Véhicule',
+      vehiclePlate: data.client_vehicles?.plaque || '',
+      date: data.date,
+      mileage: Number(data.kilometrage || 0),
+      services: data.services || [],
+      partsChanged: data.pieces || [],
+      cost: Number(data.cout || 0),
+      mechanicName: data.mecanicien_nom || 'Chef Mécanicien',
+      notes: data.notes || '',
+    };
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('interventions').delete().eq('id', id);
+    if (error) throw new Error(`Erreur suppression intervention: ${error.message}`);
   },
 };
 
@@ -1857,3 +2033,353 @@ export async function syncAllMockDataToSupabase(): Promise<{
     syncedCount: 44,
   };
 }
+
+/* ============================================================================
+   16. PARAMÈTRES DU SITE & ENTREPRISE (SITE SETTINGS API)
+   ============================================================================ */
+export const DEFAULT_SITE_SETTINGS: SiteSettings = {
+  id: 1,
+  nom_entreprise: 'Officina Djeneka (Garage Moderne)',
+  slogan: 'Performance & Fiabilité',
+  description_courte: 'Centre automobile moderne de référence à Bingerville Adjin Palmeraie : mécanique de pointe, valise diagnostic, pièces détachées certifiées et location de véhicules.',
+  a_propos: 'Fondé sur des exigences strictes de rigueur, de précision et de respect des normes constructeurs, Officina Djeneka accompagne les particuliers et entreprises dans la maintenance, la réparation moteur, la carrosserie et l\'entretien préventif de leur parc automobile avec des équipements de dernière génération.',
+  adresse: 'Bingerville, Adjin Palmeraie',
+  ville: 'Bingerville, Abidjan (Côte d\'Ivoire)',
+  latitude: 5.358249,
+  longitude: -3.896616,
+  telephone_principal: '+225 07 78 03 03 75',
+  telephone_whatsapp: '+39 349 080 2320',
+  email: 'contact@officina-djeneka.ci',
+  horaires: {
+    lundi: '07h30 - 18h30',
+    mardi: '07h30 - 18h30',
+    mercredi: '07h30 - 18h30',
+    jeudi: '07h30 - 18h30',
+    vendredi: '07h30 - 18h30',
+    samedi: '07h30 - 18h30',
+    dimanche: 'Fermé (astreinte dépannage 24/7)',
+  },
+  facebook_url: 'https://facebook.com',
+  instagram_url: 'https://instagram.com',
+  tiktok_url: '',
+  youtube_url: '',
+  logo_url: '',
+  favicon_url: '',
+  image_heros_url: '',
+  couleur_primaire: '#1B2A6B',
+  couleur_accent: '#D62828',
+  message_bandeau: 'Promotion du mois : Contrôle électronique valise offert pour toute révision générale !',
+  bandeau_actif: false,
+  devise: 'FCFA',
+  prix_vidange_rapide: 15000,
+  seo_titre: 'Officina Djeneka (Garage Moderne) | Performance & Fiabilité - Bingerville',
+  seo_description: 'Garage automobile moderne à Bingerville, Adjin Palmeraie. Mécanique générale, diagnostic électronique, tôlerie peinture, pièces détachées d\'origine et dépannage urgent 24/7.',
+  mode_maintenance: false,
+};
+
+export const siteSettingsApi = {
+  async get(): Promise<SiteSettings> {
+    try {
+      const { data, error } = await supabase
+        .from('site_settings')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (error || !data) {
+        return DEFAULT_SITE_SETTINGS;
+      }
+
+      return {
+        ...DEFAULT_SITE_SETTINGS,
+        ...data,
+        horaires: data.horaires ? { ...DEFAULT_SITE_SETTINGS.horaires, ...data.horaires } : DEFAULT_SITE_SETTINGS.horaires,
+      };
+    } catch {
+      return DEFAULT_SITE_SETTINGS;
+    }
+  },
+
+  async update(settings: Partial<SiteSettings>): Promise<SiteSettings> {
+    const payload: Record<string, unknown> = {
+      ...settings,
+      id: 1,
+      updated_at: new Date().toISOString(),
+    };
+    delete payload.id;
+
+    const { data, error } = await supabase
+      .from('site_settings')
+      .upsert({ id: 1, ...payload })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Erreur enregistrement paramètres: ${error.message}`);
+    }
+
+    return {
+      ...DEFAULT_SITE_SETTINGS,
+      ...data,
+      horaires: data.horaires ? { ...DEFAULT_SITE_SETTINGS.horaires, ...data.horaires } : DEFAULT_SITE_SETTINGS.horaires,
+    };
+  },
+};
+
+/* ============================================================================
+   17. GALERIE RÉALISATIONS (GALLERY API)
+   ============================================================================ */
+export const galleryApi = {
+  async getAll(): Promise<GalleryItem[]> {
+    const { data, error } = await supabase
+      .from('gallery_items')
+      .select('*')
+      .order('ordre', { ascending: true });
+
+    if (error || !data || data.length === 0) {
+      return MOCK_GALLERY.map((g, idx) => ({
+        ...g,
+        titre: g.title,
+        categorie: g.category,
+        image_url: g.imageUrl,
+        ordre: idx,
+        actif: true,
+      }));
+    }
+
+    return data.map((d: any) => ({
+      id: d.id,
+      title: d.titre || d.title || 'Réalisation Officina Djeneka',
+      category: d.categorie || d.category || 'Atelier',
+      imageUrl: d.image_url || d.imageUrl || '',
+      description: d.description || '',
+      titre: d.titre || d.title,
+      categorie: d.categorie || d.category,
+      image_url: d.image_url || d.imageUrl,
+      ordre: d.ordre ?? 0,
+      actif: d.actif ?? true,
+      created_at: d.created_at,
+    }));
+  },
+
+  async create(item: Omit<GalleryItem, 'id'>): Promise<GalleryItem> {
+    const { data, error } = await supabase
+      .from('gallery_items')
+      .insert({
+        titre: item.titre || item.title,
+        categorie: item.categorie || item.category,
+        image_url: item.image_url || item.imageUrl,
+        description: item.description || '',
+        ordre: item.ordre ?? 0,
+        actif: item.actif ?? true,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return {
+      id: data.id,
+      title: data.titre,
+      category: data.categorie,
+      imageUrl: data.image_url,
+      description: data.description || '',
+      titre: data.titre,
+      categorie: data.categorie,
+      image_url: data.image_url,
+      ordre: data.ordre,
+      actif: data.actif,
+      created_at: data.created_at,
+    };
+  },
+
+  async update(id: string, updates: Partial<GalleryItem>): Promise<GalleryItem> {
+    const payload: Record<string, unknown> = {};
+    if (updates.titre !== undefined || updates.title !== undefined) payload.titre = updates.titre || updates.title;
+    if (updates.categorie !== undefined || updates.category !== undefined) payload.categorie = updates.categorie || updates.category;
+    if (updates.image_url !== undefined || updates.imageUrl !== undefined) payload.image_url = updates.image_url || updates.imageUrl;
+    if (updates.description !== undefined) payload.description = updates.description;
+    if (updates.ordre !== undefined) payload.ordre = updates.ordre;
+    if (updates.actif !== undefined) payload.actif = updates.actif;
+
+    const { data, error } = await supabase
+      .from('gallery_items')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return {
+      id: data.id,
+      title: data.titre,
+      category: data.categorie,
+      imageUrl: data.image_url,
+      description: data.description || '',
+      titre: data.titre,
+      categorie: data.categorie,
+      image_url: data.image_url,
+      ordre: data.ordre,
+      actif: data.actif,
+      created_at: data.created_at,
+    };
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('gallery_items').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
+};
+
+/* ============================================================================
+   18. JOURNAL D'AUDIT (AUDIT LOG API)
+   ============================================================================ */
+export const auditApi = {
+  async getLogs(limit = 100): Promise<AuditLogEntry[]> {
+    const { data, error } = await supabase
+      .from('audit_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.warn('Erreur lecture audit_log:', error.message);
+      return [];
+    }
+
+    return (data || []).map((d: any) => ({
+      id: d.id,
+      user_id: d.user_id,
+      user_email: d.user_email,
+      user_role: d.user_role,
+      action: d.action,
+      table_name: d.table_name,
+      record_id: d.record_id,
+      avant: d.avant,
+      apres: d.apres,
+      created_at: d.created_at,
+    }));
+  },
+};
+
+/* ============================================================================
+   19. GESTION DES UTILISATEURS & RÔLES (USERS API)
+   ============================================================================ */
+export const usersApi = {
+  async getAll(): Promise<User[]> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Erreur usersApi.getAll:', error.message);
+      return [];
+    }
+
+    return (data || []).map((d: any) => ({
+      id: d.id,
+      name: d.nom || d.email?.split('@')[0] || 'Utilisateur',
+      email: d.email || '',
+      phone: d.telephone || '',
+      role: (d.role as UserRole) || 'client',
+      address: d.adresse || undefined,
+      avatarUrl: d.avatar_url || undefined,
+      notifyEmail: d.notif_email ?? true,
+      notifyWhatsapp: d.notif_whatsapp ?? true,
+      actif: d.actif ?? true,
+    }));
+  },
+
+  async updateRole(userId: string, newRole: UserRole): Promise<void> {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role: newRole, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+
+    if (error) {
+      if (error.message?.includes('dernier administrateur')) {
+        throw new Error('Impossible de rétrograder le dernier administrateur actif du système.');
+      }
+      throw new Error(`Erreur changement de rôle: ${error.message}`);
+    }
+  },
+
+  async toggleActive(userId: string, actif: boolean): Promise<void> {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ actif, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+
+    if (error) {
+      if (error.message?.includes('dernier administrateur')) {
+        throw new Error('Impossible de désactiver le dernier administrateur actif.');
+      }
+      throw new Error(`Erreur modification statut: ${error.message}`);
+    }
+  },
+
+  async deleteUser(userId: string): Promise<void> {
+    const { error } = await supabase
+      .from('profiles')
+      .delete()
+      .eq('id', userId);
+
+    if (error) {
+      if (error.message?.includes('dernier administrateur')) {
+        throw new Error('Impossible de supprimer le dernier administrateur actif.');
+      }
+      throw new Error(`Erreur suppression compte: ${error.message}`);
+    }
+  },
+
+  async createStaff(payload: { email: string; password: string; nom: string; telephone?: string; role: 'mecanicien' | 'admin' }): Promise<{ success: boolean; message: string; user?: any }> {
+    try {
+      const { data, error } = await supabase.functions.invoke('create-staff-user', {
+        body: payload,
+      });
+
+      if (!error && data?.success) {
+        return data;
+      }
+      if (error) {
+        console.warn('Erreur Edge function:', error.message);
+      }
+    } catch (err: unknown) {
+      console.warn('Appel Edge Function create-staff-user échoué, tentative directe:', err);
+    }
+
+    // Direct fallback: sign up user and create profile
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: payload.email,
+      password: payload.password,
+      options: {
+        data: {
+          nom: payload.nom,
+          telephone: payload.telephone || '',
+          role: payload.role,
+        },
+      },
+    });
+
+    if (signUpError) {
+      throw new Error(`Erreur création: ${signUpError.message}`);
+    }
+
+    if (signUpData.user) {
+      await supabase.from('profiles').upsert({
+        id: signUpData.user.id,
+        nom: payload.nom,
+        email: payload.email,
+        telephone: payload.telephone || '',
+        role: payload.role,
+        actif: true,
+      });
+    }
+
+    return {
+      success: true,
+      message: `Compte ${payload.role} créé avec succès pour ${payload.nom} (${payload.email}).`,
+      user: signUpData.user,
+    };
+  },
+};

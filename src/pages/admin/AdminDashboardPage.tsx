@@ -12,10 +12,12 @@ import {
   ClientVehicle,
   Intervention,
   User,
+  UserRole,
   RentalVehicle,
   ReservationStatus,
   EmergencyStatus,
   StockStatus,
+  GalleryItem,
 } from '../../types';
 import {
   emergencyApi,
@@ -27,17 +29,8 @@ import {
   vehiclesApi,
   interventionsApi,
   rentalsApi,
-  getDatesBetween,
-  testSupabaseConnection,
-  updateSupabaseConfig,
-  resetSupabaseConfig,
-  getSupabaseConfig,
-  syncAllMockDataToSupabase,
-  SUPABASE_SQL_SCHEMA,
-  isValidSupabaseUrl,
-  normalizeSupabaseUrl,
-  profilesApi,
-  ConnectionStatus,
+  galleryApi,
+  usersApi,
 } from '../../services/api';
 import { supabase } from '../../lib/supabase';
 import { formatFCFA, formatDateFR } from '../../utils/format';
@@ -47,6 +40,8 @@ import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
 import { Modal } from '../../components/common/Modal';
 import { Badge } from '../../components/common/Badge';
+import { CompanySettingsTab } from '../../components/admin/CompanySettingsTab';
+import { AuditLogTab } from '../../components/admin/AuditLogTab';
 import {
   LayoutDashboard,
   BellRing,
@@ -59,9 +54,6 @@ import {
   BookOpen,
   BarChart3,
   Search,
-  CheckCircle,
-  XCircle,
-  Clock,
   Plus,
   Upload,
   AlertTriangle,
@@ -69,17 +61,20 @@ import {
   Truck,
   Phone,
   Shield,
-  Layers,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Database,
-  RefreshCw,
-  Copy,
+  Trash2,
+  Edit,
+  CheckCircle2,
+  XCircle,
+  Building2,
+  History,
+  Image as ImageIcon,
+  UserPlus,
+  UserCheck,
+  UserX,
   ExternalLink,
-  Code2,
-  ChevronDown,
-  ChevronUp,
+  Lock,
+  Eye,
+  RefreshCw,
 } from 'lucide-react';
 
 export const AdminDashboardPage: React.FC = () => {
@@ -102,19 +97,12 @@ export const AdminDashboardPage: React.FC = () => {
     | 'parts'
     | 'reviews'
     | 'blog'
-    | 'stats'
+    | 'gallery'
     | 'users'
-    | 'supabase'
+    | 'settings'
+    | 'audit'
+    | 'stats'
   >('dashboard');
-
-  // Supabase states
-  const [supabaseUrl, setSupabaseUrl] = useState(getSupabaseConfig().url);
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState(getSupabaseConfig().anonKey);
-  const [supabaseStatus, setSupabaseStatus] = useState<ConnectionStatus | null>(null);
-  const [testingSupabase, setTestingSupabase] = useState(false);
-  const [syncingSupabase, setSyncingSupabase] = useState(false);
-  const [copiedSql, setCopiedSql] = useState(false);
-  const [showSqlSchema, setShowSqlSchema] = useState(false);
 
   // Global Quick Search
   const [globalSearch, setGlobalSearch] = useState('');
@@ -130,18 +118,39 @@ export const AdminDashboardPage: React.FC = () => {
   const [interventions, setInterventions] = useState<Intervention[]>([]);
   const [fleet, setFleet] = useState<RentalVehicle[]>([]);
   const [usersList, setUsersList] = useState<User[]>([]);
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
+  const [loadingData, setLoadingData] = useState(false);
 
-  // Modals & form state
+  // Generic Deletion Confirmation Modal State
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    itemDescription?: string;
+    onConfirm: () => Promise<void>;
+    loading: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: async () => {},
+    loading: false,
+  });
+
+  // ==================== MODALS & FORM STATES ====================
+
+  // 1. Intervention Modal
   const [newInterventionModal, setNewInterventionModal] = useState(false);
-  const [intClientId, setIntClientId] = useState('user-client-1');
-  const [intVehicleId, setIntVehicleId] = useState('veh-1');
+  const [editingIntervention, setEditingIntervention] = useState<Intervention | null>(null);
+  const [intClientId, setIntClientId] = useState('');
+  const [intVehicleId, setIntVehicleId] = useState('');
   const [intMileage, setIntMileage] = useState(80000);
   const [intServices, setIntServices] = useState('Vidange rapide 15 min, Contrôle freinage');
   const [intParts, setIntParts] = useState('Filtre huile d’origine, Huile 5W30 (5L)');
   const [intCost, setIntCost] = useState(35000);
   const [intNotes, setIntNotes] = useState('Révision générale effectuée sans anomalie.');
 
-  // Part CRUD Modal
+  // 2. Part Modal
   const [partModalOpen, setPartModalOpen] = useState(false);
   const [editingPart, setEditingPart] = useState<AutoPart | null>(null);
   const [partName, setPartName] = useState('');
@@ -152,21 +161,81 @@ export const AdminDashboardPage: React.FC = () => {
   const [partStatus, setPartStatus] = useState<StockStatus>('in_stock');
   const [partQuantity, setPartQuantity] = useState(5);
 
-  // Blog Editor Modal
+  // 3. Blog Modal
   const [blogModalOpen, setBlogModalOpen] = useState(false);
+  const [editingBlog, setEditingBlog] = useState<BlogPost | null>(null);
   const [blogTitle, setBlogTitle] = useState('');
   const [blogContent, setBlogContent] = useState('');
   const [blogCategory, setBlogCategory] = useState('Conseils Entretien');
+  const [blogCover, setBlogCover] = useState('https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=800&auto=format&fit=crop&q=80');
 
-  // Fleet calendar maintenance block modal
-  const [blockDateModal, setBlockDateModal] = useState(false);
-  const [selectedFleetVehicleId, setSelectedFleetVehicleId] = useState('');
-  const [blockDateValue, setBlockDateValue] = useState(new Date().toISOString().split('T')[0]);
+  // 4. Client Vehicle Modal
+  const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<ClientVehicle | null>(null);
+  const [vehBrand, setVehBrand] = useState('Toyota');
+  const [vehModel, setVehModel] = useState('Corolla');
+  const [vehYear, setVehYear] = useState(2021);
+  const [vehPlate, setVehPlate] = useState('');
+  const [vehMileage, setVehMileage] = useState(65000);
+  const [vehClientId, setVehClientId] = useState('');
+
+  // 5. Fleet Rental Vehicle Modal
+  const [fleetModalOpen, setFleetModalOpen] = useState(false);
+  const [editingFleet, setEditingFleet] = useState<RentalVehicle | null>(null);
+  const [fleetName, setFleetName] = useState('Toyota RAV4 4x4');
+  const [fleetBrand, setFleetBrand] = useState('Toyota');
+  const [fleetModel, setFleetModel] = useState('RAV4');
+  const [fleetYear, setFleetYear] = useState(2023);
+  const [fleetCategory, setFleetCategory] = useState<RentalVehicle['category']>('SUV');
+  const [fleetSeats, setFleetSeats] = useState(5);
+  const [fleetTransmission, setFleetTransmission] = useState<'Automatique' | 'Manuelle'>('Automatique');
+  const [fleetFuel, setFleetFuel] = useState<'Essence' | 'Diesel'>('Essence');
+  const [fleetPricePerDay, setFleetPricePerDay] = useState(45000);
+  const [fleetDeposit, setFleetDeposit] = useState(150000);
+  const [fleetImage, setFleetImage] = useState('https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=800&auto=format&fit=crop&q=80');
+
+  // 6. Reservation Modal
+  const [resModalOpen, setResModalOpen] = useState(false);
+  const [editingRes, setEditingRes] = useState<Reservation | null>(null);
+  const [resVehicleId, setResVehicleId] = useState('');
+  const [resClientName, setResClientName] = useState('');
+  const [resClientPhone, setResClientPhone] = useState('');
+  const [resClientEmail, setResClientEmail] = useState('');
+  const [resStartDate, setResStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [resEndDate, setResEndDate] = useState(new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0]);
+  const [resStatus, setResStatus] = useState<ReservationStatus>('confirmee');
+  const [resPrice, setResPrice] = useState(135000);
+
+  // 7. Gallery Modal
+  const [galleryModalOpen, setGalleryModalOpen] = useState(false);
+  const [editingGallery, setEditingGallery] = useState<GalleryItem | null>(null);
+  const [galTitle, setGalTitle] = useState('');
+  const [galCategory, setGalCategory] = useState('Atelier & Équipements');
+  const [galUrl, setGalUrl] = useState('');
+  const [galOrder, setGalOrder] = useState(1);
+  const [galActive, setGalActive] = useState(true);
+
+  // 8. Staff Account Creation Modal
+  const [staffModalOpen, setStaffModalOpen] = useState(false);
+  const [staffName, setStaffName] = useState('');
+  const [staffEmail, setStaffEmail] = useState('');
+  const [staffPassword, setStaffPassword] = useState('');
+  const [staffPhone, setStaffPhone] = useState('');
+  const [staffRole, setStaffRole] = useState<'mecanicien' | 'admin'>('mecanicien');
+  const [creatingStaff, setCreatingStaff] = useState(false);
+
+  // 9. Manual Review Modal
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [revAuthor, setRevAuthor] = useState('');
+  const [revRating, setRevRating] = useState(5);
+  const [revComment, setRevComment] = useState('');
+  const [revService, setRevService] = useState('Vidange rapide');
 
   // Load all operational data from Supabase
   const loadData = async () => {
+    setLoadingData(true);
     try {
-      const [emList, quList, resList, pList, revList, bList, vList, iList, fList, uList] = await Promise.all([
+      const [emList, quList, resList, pList, revList, bList, vList, iList, fList, uList, gList] = await Promise.all([
         emergencyApi.getAll(),
         quotesApi.getAll(),
         reservationsApi.getAll(),
@@ -176,7 +245,8 @@ export const AdminDashboardPage: React.FC = () => {
         vehiclesApi.getAll(),
         interventionsApi.getAll(),
         rentalsApi.getAll(),
-        profilesApi.getAll(),
+        usersApi.getAll(),
+        galleryApi.getAll(),
       ]);
 
       setEmergencies(emList);
@@ -189,8 +259,11 @@ export const AdminDashboardPage: React.FC = () => {
       setInterventions(iList);
       setFleet(fList);
       setUsersList(uList);
+      setGalleryItems(gList);
     } catch (err) {
       console.warn('Erreur chargement dashboard admin:', err);
+    } finally {
+      setLoadingData(false);
     }
   };
 
@@ -250,7 +323,35 @@ export const AdminDashboardPage: React.FC = () => {
   const totalPendingActionCount =
     pendingReservationsCount + pendingQuotesCount + pendingReviewsCount + activeEmergenciesCount;
 
-  // Emergency takeover action
+  // Confirmation Trigger Helper
+  const triggerDeleteConfirm = (
+    title: string,
+    message: string,
+    itemDescription: string,
+    onConfirmAction: () => Promise<void>
+  ) => {
+    setDeleteConfirm({
+      isOpen: true,
+      title,
+      message,
+      itemDescription,
+      onConfirm: async () => {
+        setDeleteConfirm((prev) => ({ ...prev, loading: true }));
+        try {
+          await onConfirmAction();
+          setDeleteConfirm((prev) => ({ ...prev, isOpen: false, loading: false }));
+        } catch (err: any) {
+          showToast(err.message || 'Erreur lors de la suppression', 'error');
+          setDeleteConfirm((prev) => ({ ...prev, loading: false }));
+        }
+      },
+      loading: false,
+    });
+  };
+
+  // ==================== ACTIONS HANDLERS ====================
+
+  // Emergency actions
   const handleTakeEmergency = async (id: string) => {
     try {
       const updated = await emergencyApi.updateStatus(id, 'prise_en_charge', user.name);
@@ -261,7 +362,6 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  // Change emergency status
   const handleChangeEmergencyStatus = async (id: string, newStatus: EmergencyStatus) => {
     try {
       const updated = await emergencyApi.updateStatus(id, newStatus);
@@ -272,7 +372,44 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  // Change reservation status
+  const handleDeleteEmergency = (em: EmergencyRequest) => {
+    triggerDeleteConfirm(
+      'Supprimer l\'alerte SOS',
+      'Supprimer définitivement cette alerte de dépannage ? Cette action est irréversible.',
+      `Dossier #${em.id} - ${em.clientName} (${em.locationName})`,
+      async () => {
+        await emergencyApi.delete(em.id);
+        setEmergencies(emergencies.filter((e) => e.id !== em.id));
+        showToast('Alerte supprimée avec succès', 'info');
+      }
+    );
+  };
+
+  // Quotes actions
+  const handleChangeQuoteStatus = async (id: string, newStatus: 'nouveau' | 'en_cours' | 'traite') => {
+    try {
+      await quotesApi.updateStatus(id, newStatus);
+      setQuotes(quotes.map((q) => (q.id === id ? { ...q, status: newStatus } : q)));
+      showToast('Statut du devis actualisé', 'info');
+    } catch {
+      showToast('Erreur mise à jour devis', 'error');
+    }
+  };
+
+  const handleDeleteQuote = (q: QuoteRequest) => {
+    triggerDeleteConfirm(
+      'Supprimer la demande de devis',
+      'Supprimer définitivement ce devis ? Cette action est irréversible.',
+      `${q.serviceName} pour ${q.clientName} (${q.vehicleInfo})`,
+      async () => {
+        await quotesApi.delete(q.id);
+        setQuotes(quotes.filter((item) => item.id !== q.id));
+        showToast('Devis supprimé', 'info');
+      }
+    );
+  };
+
+  // Reservation actions
   const handleChangeReservationStatus = async (id: string, newStatus: ReservationStatus) => {
     try {
       const updated = await reservationsApi.updateStatus(id, newStatus);
@@ -283,52 +420,94 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  // Approve or delete review
+  const handleDeleteReservation = (r: Reservation) => {
+    triggerDeleteConfirm(
+      'Supprimer la réservation',
+      'Supprimer définitivement cette réservation ? Les dates bloquées associées seront libérées.',
+      `${r.vehicleName} réservé par ${r.clientName} (${r.startDate} au ${r.endDate})`,
+      async () => {
+        await reservationsApi.delete(r.id);
+        setReservations(reservations.filter((item) => item.id !== r.id));
+        showToast('Réservation supprimée définitivement', 'info');
+      }
+    );
+  };
+
+  // Reviews actions
   const handleApproveReview = async (id: string) => {
     await reviewsApi.approve(id);
     setReviews(reviews.map((r) => (r.id === id ? { ...r, status: 'approuve' } : r)));
     showToast('Avis approuvé et publié sur le site !', 'success');
   };
 
-  const handleDeleteReview = async (id: string) => {
-    try {
-      await reviewsApi.delete(id);
-      setReviews(reviews.filter((r) => r.id !== id));
-      showToast('Avis supprimé avec succès', 'info');
-    } catch {
-      showToast('Erreur suppression avis', 'error');
-    }
+  const handleDeleteReview = (rev: Review) => {
+    triggerDeleteConfirm(
+      'Supprimer l\'avis client',
+      'Supprimer définitivement cet avis ? Cette action est irréversible.',
+      `Avis de ${rev.authorName} (${rev.rating}/5) : "${rev.comment.slice(0, 40)}..."`,
+      async () => {
+        await reviewsApi.delete(rev.id);
+        setReviews(reviews.filter((r) => r.id !== rev.id));
+        showToast('Avis supprimé avec succès', 'info');
+      }
+    );
   };
 
-  // Add intervention
-  const handleCreateIntervention = async (e: React.FormEvent) => {
+  // Intervention CRUD
+  const handleSaveIntervention = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const targetVehicle = vehicles.find((v) => v.id === intVehicleId) || vehicles[0];
-      const newInv = await interventionsApi.create({
-        clientId: intClientId,
-        vehicleId: targetVehicle?.id || 'veh-1',
-        vehicleName: `${targetVehicle?.brand} ${targetVehicle?.model}`,
-        vehiclePlate: targetVehicle?.plate || '8492-HH-01',
-        date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
-        mileage: Number(intMileage),
-        services: intServices.split(',').map((s) => s.trim()),
-        partsChanged: intParts.split(',').map((p) => p.trim()),
-        cost: Number(intCost),
-        mechanicName: user.name,
-        notes: intNotes,
-      });
-
-      setInterventions([newInv, ...interventions]);
+      if (editingIntervention) {
+        const updated = await interventionsApi.update(editingIntervention.id, {
+          vehicleName: `${targetVehicle?.brand} ${targetVehicle?.model}`,
+          vehiclePlate: targetVehicle?.plate || '8492-HH-01',
+          mileage: Number(intMileage),
+          services: intServices.split(',').map((s) => s.trim()),
+          partsChanged: intParts.split(',').map((p) => p.trim()),
+          cost: Number(intCost),
+          notes: intNotes,
+        });
+        setInterventions(interventions.map((i) => (i.id === updated.id ? updated : i)));
+        showToast('Intervention mise à jour avec succès', 'success');
+      } else {
+        const newInv = await interventionsApi.create({
+          clientId: intClientId || user.id,
+          vehicleId: targetVehicle?.id || 'veh-1',
+          vehicleName: `${targetVehicle?.brand} ${targetVehicle?.model}`,
+          vehiclePlate: targetVehicle?.plate || '8492-HH-01',
+          date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
+          mileage: Number(intMileage),
+          services: intServices.split(',').map((s) => s.trim()),
+          partsChanged: intParts.split(',').map((p) => p.trim()),
+          cost: Number(intCost),
+          mechanicName: user.name,
+          notes: intNotes,
+        });
+        setInterventions([newInv, ...interventions]);
+        showToast('Intervention enregistrée et carnet d\'entretien actualisé !', 'success');
+      }
       setNewInterventionModal(false);
-      showToast('Intervention enregistrée et kilométrage mis à jour !', 'success');
-      loadData();
+      setEditingIntervention(null);
     } catch {
-      showToast('Erreur lors de la création de l’intervention', 'error');
+      showToast('Erreur lors de l’enregistrement de l’intervention', 'error');
     }
   };
 
-  // Part Save / Edit
+  const handleDeleteIntervention = (inv: Intervention) => {
+    triggerDeleteConfirm(
+      'Supprimer l\'intervention atelier',
+      'Supprimer définitivement cette intervention du registre ? Le carnet client sera actualisé.',
+      `${inv.vehicleName} (${inv.vehiclePlate}) - ${inv.date} - ${formatFCFA(inv.cost)}`,
+      async () => {
+        await interventionsApi.delete(inv.id);
+        setInterventions(interventions.filter((i) => i.id !== inv.id));
+        showToast('Intervention supprimée', 'info');
+      }
+    );
+  };
+
+  // Part CRUD
   const handleSavePart = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -369,6 +548,30 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  const handleDeletePart = (p: AutoPart) => {
+    triggerDeleteConfirm(
+      'Supprimer la pièce du catalogue',
+      'Supprimer définitivement cette référence du stock ? Cette action est irréversible.',
+      `${p.name} (Réf: ${p.reference}) - ${formatFCFA(p.price)}`,
+      async () => {
+        await partsApi.delete(p.id);
+        setParts(parts.filter((item) => item.id !== p.id));
+        showToast('Pièce supprimée du catalogue', 'info');
+      }
+    );
+  };
+
+  // Quick part stock status toggle
+  const handleQuickUpdatePartStatus = async (partId: string, newStatus: StockStatus) => {
+    try {
+      const updated = await partsApi.update(partId, { stockStatus: newStatus });
+      setParts(parts.map((p) => (p.id === partId ? updated : p)));
+      showToast('Statut de stock actualisé', 'info');
+    } catch {
+      showToast('Erreur mise à jour stock', 'error');
+    }
+  };
+
   // CSV Import simulation
   const handleSimulateCsvImport = async () => {
     const dummy = [
@@ -382,38 +585,284 @@ export const AdminDashboardPage: React.FC = () => {
     showToast(`Importation réussie : ${count} nouvelles références ajoutées depuis le fichier CSV !`, 'success');
   };
 
-  // Save Blog Post
+  // Blog CRUD
   const handleSaveBlogPost = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const created = await blogApi.savePost({
-        title: blogTitle,
-        content: blogContent,
-        category: blogCategory,
-        author: user.name,
-      });
-      setBlogPosts([created, ...blogPosts]);
+      if (editingBlog) {
+        const updated = await blogApi.update(editingBlog.id, {
+          title: blogTitle,
+          content: blogContent,
+          category: blogCategory,
+          coverImage: blogCover,
+        });
+        setBlogPosts(blogPosts.map((b) => (b.id === updated.id ? updated : b)));
+        showToast('Article modifié avec succès', 'success');
+      } else {
+        const created = await blogApi.savePost({
+          title: blogTitle,
+          content: blogContent,
+          category: blogCategory,
+          author: user.name,
+          coverImage: blogCover,
+        });
+        setBlogPosts([created, ...blogPosts]);
+        showToast('Article de blog publié avec succès !', 'success');
+      }
       setBlogModalOpen(false);
-      setBlogTitle('');
-      setBlogContent('');
-      showToast('Article de blog publié avec succès !', 'success');
+      setEditingBlog(null);
     } catch {
       showToast('Erreur enregistrement article', 'error');
     }
   };
 
-  // Toggle Maintenance Date for Fleet Vehicle
+  const handleDeleteBlog = (post: BlogPost) => {
+    triggerDeleteConfirm(
+      'Supprimer l\'article de blog',
+      'Supprimer définitivement cet article du site ? Cette action est irréversible.',
+      `"${post.title}" (${post.category})`,
+      async () => {
+        await blogApi.delete(post.id);
+        setBlogPosts(blogPosts.filter((b) => b.id !== post.id));
+        showToast('Article supprimé avec succès', 'info');
+      }
+    );
+  };
+
+  // Fleet Rental CRUD
+  const handleSaveFleet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingFleet) {
+        const updated = await rentalsApi.update(editingFleet.id, {
+          name: fleetName,
+          pricePerDay: Number(fleetPricePerDay),
+          deposit: Number(fleetDeposit),
+          images: [fleetImage],
+        });
+        setFleet(fleet.map((v) => (v.id === updated.id ? updated : v)));
+        showToast('Véhicule de flotte mis à jour', 'success');
+      } else {
+        const created = await rentalsApi.create({
+          name: fleetName,
+          brand: fleetBrand,
+          model: fleetModel,
+          year: Number(fleetYear),
+          category: fleetCategory,
+          seats: Number(fleetSeats),
+          transmission: fleetTransmission,
+          fuel: fleetFuel,
+          airConditioned: true,
+          pricePerDay: Number(fleetPricePerDay),
+          weeklyDiscountPercent: 12,
+          deposit: Number(fleetDeposit),
+          images: [fleetImage],
+          features: ['Climatisation', 'Bluetooth', 'GPS', 'Assurance tout risque'],
+          unavailableDates: [],
+        });
+        setFleet([created, ...fleet]);
+        showToast('Véhicule ajouté à la flotte de location', 'success');
+      }
+      setFleetModalOpen(false);
+      setEditingFleet(null);
+    } catch (err: any) {
+      showToast(err.message || 'Erreur enregistrement véhicule', 'error');
+    }
+  };
+
+  const handleDeleteFleet = (v: RentalVehicle) => {
+    triggerDeleteConfirm(
+      'Supprimer le véhicule de location',
+      'Supprimer définitivement ce véhicule de la flotte ? Ses réservations archivées resteront visibles.',
+      `${v.name} (${v.category}) - ${formatFCFA(v.pricePerDay)}/j`,
+      async () => {
+        await rentalsApi.delete(v.id);
+        setFleet(fleet.filter((item) => item.id !== v.id));
+        showToast('Véhicule retiré de la flotte', 'info');
+      }
+    );
+  };
+
   const handleToggleBlockDate = async (vehicleId: string, dateStr: string) => {
     try {
       const updated = await rentalsApi.toggleBlockDate(vehicleId, dateStr);
       setFleet(fleet.map((v) => (v.id === vehicleId ? updated : v)));
-      showToast(`Date ${dateStr} mise à jour (maintenance) pour ce véhicule.`, 'info');
+      showToast(`Date ${dateStr} mise à jour (maintenance).`, 'info');
     } catch {
       showToast('Erreur modification date de maintenance', 'error');
     }
   };
 
-  // Sidebar navigation menu with permission filtering
+  // Client Vehicle CRUD
+  const handleSaveVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingVehicle) {
+        const updated = await vehiclesApi.update(editingVehicle.id, {
+          mileage: Number(vehMileage),
+          nextServiceMileage: Number(vehMileage) + 5000,
+        });
+        setVehicles(vehicles.map((v) => (v.id === updated.id ? updated : v)));
+        showToast('Véhicule client mis à jour', 'success');
+      } else {
+        const created = await vehiclesApi.create({
+          clientId: vehClientId || user.id,
+          brand: vehBrand,
+          model: vehModel,
+          year: Number(vehYear),
+          plate: vehPlate,
+          mileage: Number(vehMileage),
+          nextServiceMileage: Number(vehMileage) + 5000,
+          lastServiceDate: 'Récemment enregistré',
+        });
+        setVehicles([created, ...vehicles]);
+        showToast('Véhicule client enregistré au registre', 'success');
+      }
+      setVehicleModalOpen(false);
+      setEditingVehicle(null);
+    } catch (err: any) {
+      showToast(err.message || 'Erreur enregistrement véhicule client', 'error');
+    }
+  };
+
+  const handleDeleteVehicle = (v: ClientVehicle) => {
+    triggerDeleteConfirm(
+      'Supprimer le véhicule client',
+      'Supprimer définitivement ce véhicule client ? Les interventions rattachées seront également supprimées.',
+      `${v.brand} ${v.model} (${v.plate})`,
+      async () => {
+        await vehiclesApi.delete(v.id);
+        setVehicles(vehicles.filter((item) => item.id !== v.id));
+        showToast('Véhicule client supprimé', 'info');
+      }
+    );
+  };
+
+  // Gallery CRUD
+  const handleSaveGallery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingGallery) {
+        const updated = await galleryApi.update(editingGallery.id, {
+          titre: galTitle,
+          categorie: galCategory,
+          image_url: galUrl,
+          ordre: Number(galOrder),
+          actif: galActive,
+        });
+        setGalleryItems(galleryItems.map((g) => (g.id === updated.id ? updated : g)));
+        showToast('Photo de galerie mise à jour', 'success');
+      } else {
+        const created = await galleryApi.create({
+          title: galTitle,
+          category: galCategory,
+          imageUrl: galUrl,
+          titre: galTitle,
+          categorie: galCategory,
+          image_url: galUrl,
+          description: '',
+          ordre: Number(galOrder),
+          actif: galActive,
+        });
+        setGalleryItems([created, ...galleryItems]);
+        showToast('Photo ajoutée à la galerie publique', 'success');
+      }
+      setGalleryModalOpen(false);
+      setEditingGallery(null);
+    } catch (err: any) {
+      showToast(err.message || 'Erreur enregistrement photo', 'error');
+    }
+  };
+
+  const handleDeleteGallery = (g: GalleryItem) => {
+    triggerDeleteConfirm(
+      'Supprimer la photo de la galerie',
+      'Supprimer définitivement cette photo de la galerie du site ?',
+      `Photo : ${g.titre || g.title || 'Sans titre'} (${g.categorie || g.category})`,
+      async () => {
+        await galleryApi.delete(g.id);
+        setGalleryItems(galleryItems.filter((item) => item.id !== g.id));
+        showToast('Photo supprimée de la galerie', 'info');
+      }
+    );
+  };
+
+  const handleToggleGalleryActive = async (item: GalleryItem) => {
+    try {
+      const currentActive = item.actif !== undefined ? item.actif : true;
+      const updated = await galleryApi.update(item.id, { actif: !currentActive });
+      setGalleryItems(galleryItems.map((g) => (g.id === item.id ? updated : g)));
+      showToast(`Visibilité photo : ${!currentActive ? 'Publiée' : 'Masquée'}`, 'info');
+    } catch {
+      showToast('Erreur mise à jour visibilité', 'error');
+    }
+  };
+
+  // User Management
+  const handleUpdateUserRole = async (targetUser: User, newRole: UserRole) => {
+    if (targetUser.role === 'admin' && newRole !== 'admin') {
+      const adminCount = usersList.filter((u) => u.role === 'admin' && (u.actif ?? true)).length;
+      if (adminCount <= 1) {
+        showToast('Protection : Impossible de rétrograder le dernier administrateur actif.', 'error');
+        return;
+      }
+    }
+
+    try {
+      await usersApi.updateRole(targetUser.id, newRole);
+      setUsersList(usersList.map((u) => (u.id === targetUser.id ? { ...u, role: newRole } : u)));
+      showToast(`Rôle de ${targetUser.name} modifié en : ${newRole.toUpperCase()}`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Erreur modification de rôle', 'error');
+    }
+  };
+
+  const handleToggleUserActive = async (targetUser: User) => {
+    const currentActif = targetUser.actif ?? true;
+    if (targetUser.role === 'admin' && currentActif) {
+      const activeAdmins = usersList.filter((u) => u.role === 'admin' && (u.actif ?? true)).length;
+      if (activeAdmins <= 1) {
+        showToast('Protection : Vous ne pouvez pas désactiver le dernier administrateur actif.', 'error');
+        return;
+      }
+    }
+
+    try {
+      await usersApi.toggleActive(targetUser.id, !currentActif);
+      setUsersList(usersList.map((u) => (u.id === targetUser.id ? { ...u, actif: !currentActif } : u)));
+      showToast(`Compte de ${targetUser.name} ${!currentActif ? 'activé' : 'désactivé'}`, 'info');
+    } catch (err: any) {
+      showToast(err.message || 'Erreur modification statut compte', 'error');
+    }
+  };
+
+  const handleCreateStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatingStaff(true);
+    try {
+      const res = await usersApi.createStaff({
+        email: staffEmail,
+        password: staffPassword,
+        nom: staffName,
+        telephone: staffPhone,
+        role: staffRole,
+      });
+
+      showToast(res.message, 'success');
+      setStaffModalOpen(false);
+      setStaffName('');
+      setStaffEmail('');
+      setStaffPassword('');
+      setStaffPhone('');
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Erreur création compte personnel', 'error');
+    } finally {
+      setCreatingStaff(false);
+    }
+  };
+
+  // Navigation Items
   const allNavItems = [
     { id: 'dashboard', label: 'Tableau de bord', icon: <LayoutDashboard className="w-4 h-4" /> },
     {
@@ -434,8 +883,11 @@ export const AdminDashboardPage: React.FC = () => {
     { id: 'parts', label: 'Catalogue Pièces', icon: <Package className="w-4 h-4" />, adminOnly: true },
     { id: 'reviews', label: 'Avis Clients', icon: <Star className="w-4 h-4" />, badge: pendingReviewsCount, adminOnly: true },
     { id: 'blog', label: 'Blog & Conseils', icon: <BookOpen className="w-4 h-4" />, adminOnly: true },
+    { id: 'gallery', label: 'Galerie Photos', icon: <ImageIcon className="w-4 h-4" />, adminOnly: true },
+    { id: 'users', label: 'Utilisateurs & Équipe', icon: <Users className="w-4 h-4 text-indigo-600" />, adminOnly: true },
+    { id: 'settings', label: 'Paramètres Entreprise', icon: <Building2 className="w-4 h-4 text-[#D62828]" />, adminOnly: true },
+    { id: 'audit', label: 'Journal d\'Activité', icon: <History className="w-4 h-4 text-emerald-600" />, adminOnly: true },
     { id: 'stats', label: 'Statistiques & KPIs', icon: <BarChart3 className="w-4 h-4" />, adminOnly: true },
-    { id: 'supabase', label: 'Base Supabase SQL', icon: <Database className="w-4 h-4 text-emerald-600" />, adminOnly: true },
   ];
 
   const visibleNavItems = allNavItems.filter((item) => (isAdmin ? true : !item.adminOnly));
@@ -527,7 +979,7 @@ export const AdminDashboardPage: React.FC = () => {
                 <div className="bg-blue-50/60 rounded-3xl p-5 border border-blue-200 shadow-xs flex items-center justify-between">
                   <div>
                     <span className="text-[11px] font-bold text-[#1B2A6B] uppercase tracking-wider block">
-                      Rendez-vous du jour
+                      Rendez-vous atelier
                     </span>
                     <p className="text-3xl font-extrabold font-heading text-slate-900 mt-1">
                       {quotes.filter((q) => q.status === 'en_cours').length + 4}
@@ -553,6 +1005,80 @@ export const AdminDashboardPage: React.FC = () => {
                   <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center">
                     <Car className="w-6 h-6" />
                   </div>
+                </div>
+              </div>
+
+              {/* Raccourcis sur le tableau de bord (Requis Mission 2.5) */}
+              <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-xs space-y-4">
+                <h3 className="font-heading font-bold text-base text-slate-900 flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-[#1B2A6B]" />
+                  Raccourcis d'Administration Rapide
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('settings')}
+                    className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left transition-colors flex flex-col gap-2 group cursor-pointer"
+                  >
+                    <Building2 className="w-5 h-5 text-[#D62828] group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-bold text-slate-800">Infos Entreprise</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingPart(null);
+                      setPartName('');
+                      setPartRef('');
+                      setPartPrice(25000);
+                      setPartQuantity(5);
+                      setPartModalOpen(true);
+                    }}
+                    className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left transition-colors flex flex-col gap-2 group cursor-pointer"
+                  >
+                    <Package className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-bold text-slate-800">+ Ajouter une pièce</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingFleet(null);
+                      setFleetName('');
+                      setFleetBrand('Toyota');
+                      setFleetModel('');
+                      setFleetPricePerDay(45000);
+                      setFleetDeposit(150000);
+                      setFleetModalOpen(true);
+                    }}
+                    className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left transition-colors flex flex-col gap-2 group cursor-pointer"
+                  >
+                    <Car className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-bold text-slate-800">+ Véhicule à louer</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingBlog(null);
+                      setBlogTitle('');
+                      setBlogContent('');
+                      setBlogModalOpen(true);
+                    }}
+                    className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left transition-colors flex flex-col gap-2 group cursor-pointer"
+                  >
+                    <BookOpen className="w-5 h-5 text-amber-600 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-bold text-slate-800">Publier un article</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('audit')}
+                    className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left transition-colors flex flex-col gap-2 group cursor-pointer"
+                  >
+                    <History className="w-5 h-5 text-[#1B2A6B] group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-bold text-slate-800">Journal d'activité</span>
+                  </button>
                 </div>
               </div>
 
@@ -640,15 +1166,23 @@ export const AdminDashboardPage: React.FC = () => {
                         <p className="text-xs text-[#1B2A6B] font-semibold">📞 {em.clientPhone}</p>
                       </div>
 
-                      {em.status === 'demande_envoyee' && (
+                      <div className="flex items-center gap-2">
+                        {em.status === 'demande_envoyee' && (
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleTakeEmergency(em.id)}
+                          >
+                            Je prends en charge
+                          </Button>
+                        )}
                         <Button
-                          variant="danger"
+                          variant="ghost"
                           size="sm"
-                          onClick={() => handleTakeEmergency(em.id)}
-                        >
-                          Je prends en charge
-                        </Button>
-                      )}
+                          icon={<Trash2 className="w-4 h-4 text-rose-500" />}
+                          onClick={() => handleDeleteEmergency(em)}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -665,7 +1199,7 @@ export const AdminDashboardPage: React.FC = () => {
                     Gestion des Demandes (Dépannages & Devis)
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Changez le statut en 1 clic pour tenir informé le client
+                    Changez le statut en 1 clic ou supprimez les demandes obsolètes
                   </p>
                 </div>
               </div>
@@ -720,6 +1254,14 @@ export const AdminDashboardPage: React.FC = () => {
                           <option value="depanneur_en_route">Dépanneur en route</option>
                           <option value="termine">Terminé</option>
                         </select>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<Trash2 className="w-4 h-4 text-rose-500" />}
+                          onClick={() => handleDeleteEmergency(em)}
+                          title="Supprimer définitivement"
+                        />
                       </div>
                     </div>
                   ))}
@@ -752,6 +1294,18 @@ export const AdminDashboardPage: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        <select
+                          value={q.status}
+                          onChange={(e) =>
+                            handleChangeQuoteStatus(q.id, e.target.value as any)
+                          }
+                          className="text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white"
+                        >
+                          <option value="nouveau">Nouveau</option>
+                          <option value="en_cours">En cours</option>
+                          <option value="traite">Traité</option>
+                        </select>
+
                         <a
                           href={`https://wa.me/${q.clientPhone.replace(/\D/g, '')}?text=Bonjour%20${encodeURIComponent(
                             q.clientName
@@ -762,9 +1316,17 @@ export const AdminDashboardPage: React.FC = () => {
                           rel="noreferrer"
                         >
                           <Button variant="whatsapp" size="sm" className="text-xs">
-                            Répondre sur WhatsApp
+                            WhatsApp
                           </Button>
                         </a>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<Trash2 className="w-4 h-4 text-rose-500" />}
+                          onClick={() => handleDeleteQuote(q)}
+                          title="Supprimer définitivement"
+                        />
                       </div>
                     </div>
                   ))}
@@ -776,9 +1338,31 @@ export const AdminDashboardPage: React.FC = () => {
           {/* TAB 3: CLIENTS ET VÉHICULES */}
           {activeTab === 'clients' && (
             <div className="space-y-6">
-              <h3 className="text-xl font-bold font-heading text-slate-900">
-                Parc des Véhicules Clients ({vehicles.length})
-              </h3>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold font-heading text-slate-900">
+                    Parc des Véhicules Clients ({vehicles.length})
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Ajoutez, modifiez ou supprimez des véhicules au carnet numérique
+                  </p>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Plus className="w-4 h-4" />}
+                  onClick={() => {
+                    setEditingVehicle(null);
+                    setVehBrand('Toyota');
+                    setVehModel('');
+                    setVehPlate('');
+                    setVehMileage(60000);
+                    setVehicleModalOpen(true);
+                  }}
+                >
+                  Ajouter un véhicule
+                </Button>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {vehicles.map((v) => (
@@ -805,16 +1389,41 @@ export const AdminDashboardPage: React.FC = () => {
 
                     <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
                       <span>Prochaine vidange : {v.nextServiceMileage.toLocaleString('fr-FR')} km</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setIntVehicleId(v.id);
-                          setNewInterventionModal(true);
-                        }}
-                      >
-                        Nouvelle intervention
-                      </Button>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setIntVehicleId(v.id);
+                            setEditingIntervention(null);
+                            setNewInterventionModal(true);
+                          }}
+                        >
+                          + Intervention
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          icon={<Edit className="w-3.5 h-3.5 text-blue-600" />}
+                          onClick={() => {
+                            setEditingVehicle(v);
+                            setVehBrand(v.brand);
+                            setVehModel(v.model);
+                            setVehYear(v.year);
+                            setVehPlate(v.plate);
+                            setVehMileage(v.mileage);
+                            setVehicleModalOpen(true);
+                          }}
+                          title="Modifier"
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          icon={<Trash2 className="w-3.5 h-3.5 text-rose-500" />}
+                          onClick={() => handleDeleteVehicle(v)}
+                          title="Supprimer"
+                        />
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -828,7 +1437,7 @@ export const AdminDashboardPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-xl font-bold font-heading text-slate-900">
-                    Registre des Interventions Atelier
+                    Registre des Interventions Atelier ({interventions.length})
                   </h3>
                   <p className="text-xs text-slate-500">
                     Enregistrez les travaux réalisés pour mettre à jour l'historique client
@@ -838,7 +1447,13 @@ export const AdminDashboardPage: React.FC = () => {
                   variant="primary"
                   size="sm"
                   icon={<Plus className="w-4 h-4" />}
-                  onClick={() => setNewInterventionModal(true)}
+                  onClick={() => {
+                    setEditingIntervention(null);
+                    setIntServices('Vidange rapide 15 min, Contrôle freinage');
+                    setIntParts('Filtre huile d’origine, Huile 5W30 (5L)');
+                    setIntCost(35000);
+                    setNewInterventionModal(true);
+                  }}
                 >
                   Saisir une intervention
                 </Button>
@@ -862,9 +1477,33 @@ export const AdminDashboardPage: React.FC = () => {
                         </p>
                       </div>
 
-                      <span className="text-base font-extrabold text-[#1B2A6B]">
-                        {formatFCFA(inv.cost)}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-base font-extrabold text-[#1B2A6B]">
+                          {formatFCFA(inv.cost)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<Edit className="w-3.5 h-3.5 text-blue-600" />}
+                          onClick={() => {
+                            setEditingIntervention(inv);
+                            setIntMileage(inv.mileage);
+                            setIntServices(inv.services.join(', '));
+                            setIntParts(inv.partsChanged.join(', '));
+                            setIntCost(inv.cost);
+                            setIntNotes(inv.notes || '');
+                            setNewInterventionModal(true);
+                          }}
+                          title="Modifier l'intervention"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<Trash2 className="w-3.5 h-3.5 text-rose-500" />}
+                          onClick={() => handleDeleteIntervention(inv)}
+                          title="Supprimer définitivement"
+                        />
+                      </div>
                     </div>
 
                     <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs space-y-1">
@@ -874,7 +1513,7 @@ export const AdminDashboardPage: React.FC = () => {
                       <p>
                         <strong>Fournitures / Pièces :</strong> {inv.partsChanged.join(', ')}
                       </p>
-                      <p className="text-slate-500 italic mt-1">« {inv.notes} »</p>
+                      {inv.notes && <p className="text-slate-500 italic mt-1">« {inv.notes} »</p>}
                     </div>
                   </div>
                 ))}
@@ -888,12 +1527,28 @@ export const AdminDashboardPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-xl font-bold font-heading text-slate-900">
-                    Flotte de Location & Blocages de Maintenance
+                    Flotte de Location & Calendrier ({fleet.length})
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Bloquez des dates de maintenance ou créez des réservations manuelles
+                    Ajoutez, modifiez ou bloquez des dates de maintenance
                   </p>
                 </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Plus className="w-4 h-4" />}
+                  onClick={() => {
+                    setEditingFleet(null);
+                    setFleetName('');
+                    setFleetBrand('Toyota');
+                    setFleetModel('');
+                    setFleetPricePerDay(45000);
+                    setFleetDeposit(150000);
+                    setFleetModalOpen(true);
+                  }}
+                >
+                  Ajouter un véhicule
+                </Button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -902,17 +1557,43 @@ export const AdminDashboardPage: React.FC = () => {
                     key={v.id}
                     className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4"
                   >
-                    <div className="flex items-center gap-4">
-                      <img
-                        src={v.images[0]}
-                        alt={v.name}
-                        className="w-20 h-16 rounded-2xl object-cover bg-slate-900 shrink-0"
-                      />
-                      <div>
-                        <h4 className="font-bold text-sm text-slate-900">{v.name}</h4>
-                        <p className="text-xs text-slate-400">
-                          {formatFCFA(v.pricePerDay)} / jour • {v.category}
-                        </p>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={v.images[0]}
+                          alt={v.name}
+                          className="w-20 h-16 rounded-2xl object-cover bg-slate-900 shrink-0"
+                        />
+                        <div>
+                          <h4 className="font-bold text-sm text-slate-900">{v.name}</h4>
+                          <p className="text-xs text-slate-400">
+                            {formatFCFA(v.pricePerDay)} / jour • {v.category}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<Edit className="w-3.5 h-3.5 text-blue-600" />}
+                          onClick={() => {
+                            setEditingFleet(v);
+                            setFleetName(v.name);
+                            setFleetPricePerDay(v.pricePerDay);
+                            setFleetDeposit(v.deposit);
+                            setFleetImage(v.images[0] || '');
+                            setFleetModalOpen(true);
+                          }}
+                          title="Modifier véhicule"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<Trash2 className="w-3.5 h-3.5 text-rose-500" />}
+                          onClick={() => handleDeleteFleet(v)}
+                          title="Supprimer véhicule"
+                        />
                       </div>
                     </div>
 
@@ -931,7 +1612,7 @@ export const AdminDashboardPage: React.FC = () => {
                               {d}
                               <button
                                 onClick={() => handleToggleBlockDate(v.id, d)}
-                                className="hover:text-red-900 font-bold ml-1"
+                                className="hover:text-red-900 font-bold ml-1 cursor-pointer"
                                 title="Débloquer"
                               >
                                 ×
@@ -1033,7 +1714,7 @@ export const AdminDashboardPage: React.FC = () => {
                           size="sm"
                           onClick={() => handleChangeReservationStatus(r.id, 'en_cours')}
                         >
-                          Marquer "En cours" (Clés remises)
+                          Clés remises (En cours)
                         </Button>
                       )}
 
@@ -1043,9 +1724,17 @@ export const AdminDashboardPage: React.FC = () => {
                           size="sm"
                           onClick={() => handleChangeReservationStatus(r.id, 'terminee')}
                         >
-                          Marquer "Terminée" (Véhicule restitué)
+                          Restitué (Terminée)
                         </Button>
                       )}
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={<Trash2 className="w-4 h-4 text-rose-500" />}
+                        onClick={() => handleDeleteReservation(r)}
+                        title="Supprimer la réservation"
+                      />
                     </div>
                   </div>
                 ))}
@@ -1062,7 +1751,7 @@ export const AdminDashboardPage: React.FC = () => {
                     Gestion du Stock Pièces ({parts.length})
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Ajoutez, modifiez ou importez des références par CSV
+                    Ajoutez, modifiez ou supprimez des références au catalogue
                   </p>
                 </div>
 
@@ -1073,7 +1762,7 @@ export const AdminDashboardPage: React.FC = () => {
                     icon={<Upload className="w-4 h-4" />}
                     onClick={handleSimulateCsvImport}
                   >
-                    Importer fichier CSV
+                    Importer CSV
                   </Button>
                   <Button
                     variant="primary"
@@ -1116,7 +1805,17 @@ export const AdminDashboardPage: React.FC = () => {
                     },
                     {
                       header: 'Disponibilité',
-                      render: (p: AutoPart) => <StatusPill status={p.stockStatus} type="stock" />,
+                      render: (p: AutoPart) => (
+                        <select
+                          value={p.stockStatus}
+                          onChange={(e) => handleQuickUpdatePartStatus(p.id, e.target.value as StockStatus)}
+                          className="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 bg-white"
+                        >
+                          <option value="in_stock">En stock</option>
+                          <option value="low_stock">Stock faible</option>
+                          <option value="out_of_stock">Rupture</option>
+                        </select>
+                      ),
                     },
                     {
                       header: 'Stock',
@@ -1129,23 +1828,32 @@ export const AdminDashboardPage: React.FC = () => {
                     {
                       header: 'Actions',
                       render: (p: AutoPart) => (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setEditingPart(p);
-                            setPartName(p.name);
-                            setPartRef(p.reference);
-                            setPartCategory(p.category);
-                            setPartBrand(p.brand);
-                            setPartPrice(p.price);
-                            setPartStatus(p.stockStatus);
-                            setPartQuantity(p.stockQuantity);
-                            setPartModalOpen(true);
-                          }}
-                        >
-                          Modifier
-                        </Button>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingPart(p);
+                              setPartName(p.name);
+                              setPartRef(p.reference);
+                              setPartCategory(p.category);
+                              setPartBrand(p.brand);
+                              setPartPrice(p.price);
+                              setPartStatus(p.stockStatus);
+                              setPartQuantity(p.stockQuantity);
+                              setPartModalOpen(true);
+                            }}
+                          >
+                            Modifier
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={<Trash2 className="w-3.5 h-3.5 text-rose-500" />}
+                            onClick={() => handleDeletePart(p)}
+                            title="Supprimer"
+                          />
+                        </div>
                       ),
                     },
                   ]}
@@ -1159,9 +1867,16 @@ export const AdminDashboardPage: React.FC = () => {
           {/* TAB 8: AVIS CLIENTS À MODÉRER */}
           {activeTab === 'reviews' && (
             <div className="space-y-6">
-              <h3 className="text-xl font-bold font-heading text-slate-900">
-                Modération des Avis Clients ({reviews.length})
-              </h3>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold font-heading text-slate-900">
+                    Modération des Avis Clients ({reviews.length})
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Approuvez, ajoutez ou supprimez les avis publiés
+                  </p>
+                </div>
+              </div>
 
               <div className="space-y-4">
                 {reviews.map((rev) => (
@@ -1195,7 +1910,7 @@ export const AdminDashboardPage: React.FC = () => {
                         variant="outline"
                         size="sm"
                         className="text-rose-600"
-                        onClick={() => handleDeleteReview(rev.id)}
+                        onClick={() => handleDeleteReview(rev)}
                       >
                         Supprimer
                       </Button>
@@ -1215,14 +1930,19 @@ export const AdminDashboardPage: React.FC = () => {
                     Articles du Blog ({blogPosts.length})
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Publiez des conseils d'entretien pour vos clients
+                    Publiez, modifiez ou supprimez des conseils d'entretien
                   </p>
                 </div>
                 <Button
                   variant="primary"
                   size="sm"
                   icon={<Plus className="w-4 h-4" />}
-                  onClick={() => setBlogModalOpen(true)}
+                  onClick={() => {
+                    setEditingBlog(null);
+                    setBlogTitle('');
+                    setBlogContent('');
+                    setBlogModalOpen(true);
+                  }}
                 >
                   Rédiger un article
                 </Button>
@@ -1240,16 +1960,244 @@ export const AdminDashboardPage: React.FC = () => {
                         {post.category} • Par {post.author} ({post.date})
                       </p>
                     </div>
-                    <Badge variant={post.status === 'publie' ? 'success' : 'default'}>
-                      {post.status === 'publie' ? 'Publié' : 'Brouillon'}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={post.status === 'publie' ? 'success' : 'default'}>
+                        {post.status === 'publie' ? 'Publié' : 'Brouillon'}
+                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<Edit className="w-3.5 h-3.5 text-blue-600" />}
+                        onClick={() => {
+                          setEditingBlog(post);
+                          setBlogTitle(post.title);
+                          setBlogContent(post.content);
+                          setBlogCategory(post.category);
+                          setBlogModalOpen(true);
+                        }}
+                        title="Modifier l'article"
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<Trash2 className="w-3.5 h-3.5 text-rose-500" />}
+                        onClick={() => handleDeleteBlog(post)}
+                        title="Supprimer l'article"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* TAB 10: STATISTIQUES & CHARTS */}
+          {/* TAB 10: GALERIE PHOTOS */}
+          {activeTab === 'gallery' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold font-heading text-slate-900">
+                    Galerie Photos de l'Atelier ({galleryItems.length})
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Gérez les réalisations, bancs d'essai et installations visibles sur le site
+                  </p>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Plus className="w-4 h-4" />}
+                  onClick={() => {
+                    setEditingGallery(null);
+                    setGalTitle('');
+                    setGalUrl('https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=800&auto=format&fit=crop&q=80');
+                    setGalCategory('Atelier & Équipements');
+                    setGalleryModalOpen(true);
+                  }}
+                >
+                  Ajouter une photo
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {galleryItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs flex flex-col justify-between"
+                  >
+                    <div className="relative aspect-video bg-slate-900">
+                      <img
+                        src={item.image_url || item.imageUrl || ''}
+                        alt={item.titre || item.title || ''}
+                        className="w-full h-full object-cover"
+                      />
+                      <span className="absolute top-2 left-2 text-[10px] bg-black/70 text-white font-semibold px-2 py-0.5 rounded-full backdrop-blur-xs">
+                        {item.categorie || item.category}
+                      </span>
+                    </div>
+
+                    <div className="p-4 space-y-2">
+                      <h4 className="font-bold text-sm text-slate-900 truncate">
+                        {item.titre || item.title || 'Photo atelier'}
+                      </h4>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleGalleryActive(item)}
+                          className={`font-semibold text-xs px-2 py-0.5 rounded cursor-pointer ${
+                            item.actif !== false
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {item.actif !== false ? 'Actif' : 'Masqué'}
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={<Edit className="w-3.5 h-3.5 text-blue-600" />}
+                            onClick={() => {
+                              setEditingGallery(item);
+                              setGalTitle(item.titre || item.title || '');
+                              setGalCategory(item.categorie || item.category || 'Atelier');
+                              setGalUrl(item.image_url || item.imageUrl || '');
+                              setGalleryModalOpen(true);
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={<Trash2 className="w-3.5 h-3.5 text-rose-500" />}
+                            onClick={() => handleDeleteGallery(item)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 11: GESTION DES UTILISATEURS & ÉQUIPE */}
+          {activeTab === 'users' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-bold font-heading text-slate-900 flex items-center gap-2">
+                    <Users className="w-6 h-6 text-indigo-600" />
+                    Utilisateurs & Gestion de l'Équipe ({usersList.length})
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Gérez les rôles (admin, mécanicien, client), activez/désactivez des comptes ou créez des accès personnel
+                  </p>
+                </div>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<UserPlus className="w-4 h-4" />}
+                  onClick={() => setStaffModalOpen(true)}
+                >
+                  Créer un compte personnel
+                </Button>
+              </div>
+
+              <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden">
+                <Table
+                  columns={[
+                    {
+                      header: 'Utilisateur',
+                      render: (u: User) => (
+                        <div>
+                          <p className="font-bold text-slate-900 text-xs sm:text-sm">{u.name}</p>
+                          <p className="text-[11px] text-slate-400 font-mono">{u.email}</p>
+                          {u.phone && <p className="text-[10px] text-slate-500">📞 {u.phone}</p>}
+                        </div>
+                      ),
+                    },
+                    {
+                      header: 'Rôle Système',
+                      render: (u: User) => (
+                        <select
+                          value={u.role}
+                          onChange={(e) => handleUpdateUserRole(u, e.target.value as UserRole)}
+                          className="text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white cursor-pointer"
+                        >
+                          <option value="client">Client</option>
+                          <option value="mecanicien">Mécanicien</option>
+                          <option value="receptionniste">Réceptionniste</option>
+                          <option value="admin">Administrateur</option>
+                        </select>
+                      ),
+                    },
+                    {
+                      header: 'État Compte',
+                      render: (u: User) => {
+                        const isActif = u.actif ?? true;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleUserActive(u)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold cursor-pointer transition-colors ${
+                              isActif
+                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                : 'bg-red-100 text-red-800 hover:bg-red-200'
+                            }`}
+                          >
+                            {isActif ? <UserCheck className="w-3.5 h-3.5" /> : <UserX className="w-3.5 h-3.5" />}
+                            {isActif ? 'Actif' : 'Désactivé'}
+                          </button>
+                        );
+                      },
+                    },
+                    {
+                      header: 'Actions',
+                      render: (u: User) => (
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={<Trash2 className="w-3.5 h-3.5 text-rose-500" />}
+                            onClick={() => {
+                              triggerDeleteConfirm(
+                                'Supprimer le profil utilisateur',
+                                'Supprimer définitivement ce compte ? Les données rattachées seront archivées ou supprimées.',
+                                `${u.name} (${u.email}) - Rôle : ${u.role}`,
+                                async () => {
+                                  await usersApi.deleteUser(u.id);
+                                  setUsersList(usersList.filter((item) => item.id !== u.id));
+                                  showToast('Utilisateur supprimé', 'info');
+                                }
+                              );
+                            }}
+                            title="Supprimer compte"
+                          />
+                        </div>
+                      ),
+                    },
+                  ]}
+                  data={usersList}
+                  keyExtractor={(u) => u.id}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* TAB 12: INFORMATIONS DE L'ENTREPRISE (SITE_SETTINGS) */}
+          {activeTab === 'settings' && (
+            <CompanySettingsTab />
+          )}
+
+          {/* TAB 13: JOURNAL D'ACTIVITÉ & AUDIT */}
+          {activeTab === 'audit' && (
+            <AuditLogTab />
+          )}
+
+          {/* TAB 14: STATISTIQUES & CHARTS */}
           {activeTab === 'stats' && (
             <div className="space-y-6">
               <h3 className="text-xl font-bold font-heading text-slate-900">
@@ -1344,264 +2292,72 @@ export const AdminDashboardPage: React.FC = () => {
               </div>
             </div>
           )}
-
-          {/* 11. BASE DE DONNÉES SUPABASE SQL */}
-          {activeTab === 'supabase' && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-heading font-bold text-slate-900">
-                    Configuration Base de Données Supabase (PostgreSQL)
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Liez votre instance Supabase pour stocker durablement pièces, réservations, dépannages et devis.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    icon={copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                    onClick={() => {
-                      navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
-                      setCopiedSql(true);
-                      showToast('Script SQL copié dans le presse-papiers !', 'success');
-                      setTimeout(() => setCopiedSql(false), 3000);
-                    }}
-                  >
-                    {copiedSql ? 'Copié !' : 'Copier Script SQL'}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Status Banner */}
-              <Card>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
-                      <Database className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-heading font-bold text-sm text-slate-900">
-                          État de synchronisation Supabase
-                        </span>
-                        {supabaseStatus ? (
-                          supabaseStatus.connected ? (
-                            <Badge variant="success">Connecté</Badge>
-                          ) : (
-                            <Badge variant="danger">Hors ligne</Badge>
-                          )
-                        ) : (
-                          <Badge variant="navy">Prêt</Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {supabaseStatus?.message || 'Cliquez sur « Tester la connexion » pour vérifier la liaison réseau.'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      disabled={testingSupabase}
-                      onClick={async () => {
-                        const cleanUrl = normalizeSupabaseUrl(supabaseUrl);
-                        if (!isValidSupabaseUrl(cleanUrl)) {
-                          showToast("L'URL Supabase est invalide (ex: https://votre-projet.supabase.co).", 'error');
-                          return;
-                        }
-                        setTestingSupabase(true);
-                        const res = await testSupabaseConnection({ url: cleanUrl, anonKey: supabaseAnonKey });
-                        setSupabaseStatus(res);
-                        setTestingSupabase(false);
-                        showToast(res.message, res.connected ? 'success' : 'warning');
-                      }}
-                      icon={<RefreshCw className={`w-3.5 h-3.5 ${testingSupabase ? 'animate-spin' : ''}`} />}
-                    >
-                      {testingSupabase ? 'Test en cours...' : 'Tester la connexion'}
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Configuration Form */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                  <h4 className="font-heading font-bold text-sm text-slate-900 mb-1 flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-[#1B2A6B]" />
-                    Identifiants de connexion Supabase
-                  </h4>
-                  <p className="text-xs text-slate-500 mb-4">
-                    Renseignez uniquement votre <strong>Project URL</strong> et la clé publique <strong>anon</strong>.
-                  </p>
-
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const cleanUrl = normalizeSupabaseUrl(supabaseUrl);
-                      const cleanKey = supabaseAnonKey.trim();
-
-                      if (!isValidSupabaseUrl(cleanUrl)) {
-                        showToast("L'URL Supabase n'est pas valide (doit commencer par https://).", 'error');
-                        return;
-                      }
-                      if (!cleanKey) {
-                        showToast("La clé publique anon est obligatoire.", 'error');
-                        return;
-                      }
-
-                      setSupabaseUrl(cleanUrl);
-                      setSupabaseAnonKey(cleanKey);
-
-                      try {
-                        updateSupabaseConfig({ url: cleanUrl, anonKey: cleanKey });
-                        showToast('Configuration Supabase enregistrée !', 'success');
-                      } catch (err) {
-                        showToast(err instanceof Error ? err.message : 'Erreur', 'error');
-                      }
-                    }}
-                    className="space-y-4"
-                  >
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        1. Project URL (URL du projet)
-                      </label>
-                      <input
-                        type="url"
-                        value={supabaseUrl}
-                        onChange={(e) => setSupabaseUrl(e.target.value)}
-                        placeholder="https://xxxx.supabase.co"
-                        required
-                        className="w-full text-xs font-mono px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#1B2A6B]"
-                      />
-                      <span className="text-[10px] text-slate-400 mt-1 block">
-                        Supabase &gt; Project Settings &gt; Data API &gt; Project URL
-                      </span>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        2. Project Anon Key (clé publique anonyme)
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={supabaseAnonKey}
-                        onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                        placeholder="eyJhbGciOi..."
-                        required
-                        className="w-full text-xs font-mono px-3.5 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#1B2A6B] resize-none"
-                      />
-                      <span className="text-[10px] text-slate-400 mt-1 block">
-                        Supabase &gt; Project API Keys &gt; anon public (ne jamais utiliser service_role)
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2">
-                      <Button type="submit" variant="primary" size="sm">
-                        Enregistrer les identifiants
-                      </Button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          resetSupabaseConfig();
-                          const cfg = getSupabaseConfig();
-                          setSupabaseUrl(cfg.url);
-                          setSupabaseAnonKey(cfg.anonKey);
-                          showToast('Identifiants réinitialisés', 'info');
-                        }}
-                        className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
-                      >
-                        Réinitialiser
-                      </button>
-                    </div>
-                  </form>
-                </Card>
-
-                <Card>
-                  <h4 className="font-heading font-bold text-sm text-slate-900 mb-3 flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4 text-emerald-600" />
-                    Injection & Synchronisation des données
-                  </h4>
-                  <p className="text-xs text-slate-600 leading-relaxed mb-4">
-                    Une fois vos tables créées dans Supabase via le script SQL, cliquez sur ce bouton pour y injecter automatiquement l'ensemble des données d'Officina Djeneka (catalogue de pièces, véhicules de location, articles de blog, avis clients).
-                  </p>
-
-                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 mb-4 space-y-2">
-                    <span className="font-semibold text-xs text-emerald-950 block">
-                      Ce qui sera injecté dans votre Supabase :
-                    </span>
-                    <ul className="text-[11px] text-emerald-900 space-y-1 list-disc list-inside">
-                      <li>24 pièces détachées d'origine et adaptables</li>
-                      <li>6 véhicules de location (SUV, 4x4, Berlines)</li>
-                      <li>Articles de blog techniques & conseils d'entretien</li>
-                      <li>Avis et témoignages clients vérifiés</li>
-                    </ul>
-                  </div>
-
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    className="w-full"
-                    disabled={syncingSupabase}
-                    onClick={async () => {
-                      setSyncingSupabase(true);
-                      const res = await syncAllMockDataToSupabase();
-                      setSyncingSupabase(false);
-                      showToast(res.message, res.success ? 'success' : 'warning');
-                    }}
-                    icon={<RefreshCw className={`w-4 h-4 ${syncingSupabase ? 'animate-spin' : ''}`} />}
-                  >
-                    {syncingSupabase ? 'Injection en cours...' : 'Injecter les données démo dans Supabase'}
-                  </Button>
-                </Card>
-              </div>
-
-              {/* SQL Schema Preview */}
-              <Card>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Code2 className="w-4 h-4 text-[#1B2A6B]" />
-                    <h4 className="font-heading font-bold text-sm text-slate-900">
-                      Script SQL de création des tables (DDL)
-                    </h4>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowSqlSchema(!showSqlSchema)}
-                    className="flex items-center gap-1 text-xs text-[#1B2A6B] font-semibold hover:underline"
-                  >
-                    <span>{showSqlSchema ? 'Masquer' : 'Afficher le script'}</span>
-                    {showSqlSchema ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-
-                <p className="text-xs text-slate-500 mb-3">
-                  Ouvrez <strong>Supabase &gt; SQL Editor &gt; New Query</strong>, collez ce script et cliquez sur <strong>Run</strong> pour initialiser automatiquement les 10 tables requises avec politiques RLS.
-                </p>
-
-                {showSqlSchema && (
-                  <pre className="p-4 rounded-2xl bg-slate-950 text-slate-100 font-mono text-[11px] leading-relaxed max-h-72 overflow-y-auto">
-                    {SUPABASE_SQL_SCHEMA}
-                  </pre>
-                )}
-              </Card>
-            </div>
-          )}
         </main>
       </div>
 
-      {/* MODAL: NOUVELLE INTERVENTION */}
+      {/* =========================================================================
+         CONFIRMATION DIALOG DE SUPPRESSION (Requis 2.1)
+         ========================================================================= */}
+      {deleteConfirm.isOpen && (
+        <Modal
+          isOpen={true}
+          onClose={() => setDeleteConfirm((prev) => ({ ...prev, isOpen: false }))}
+          title={deleteConfirm.title}
+        >
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-red-600 text-white shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1 text-xs">
+                <p className="font-bold text-slate-900 text-sm">Attention : Action irréversible</p>
+                <p className="text-slate-600">{deleteConfirm.message}</p>
+                {deleteConfirm.itemDescription && (
+                  <div className="mt-2 p-2 rounded-lg bg-white border border-rose-200 font-mono text-[11px] text-slate-800">
+                    {deleteConfirm.itemDescription}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirm((prev) => ({ ...prev, isOpen: false }))}
+                disabled={deleteConfirm.loading}
+              >
+                Annuler
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                icon={<Trash2 className="w-4 h-4" />}
+                loading={deleteConfirm.loading}
+                onClick={deleteConfirm.onConfirm}
+              >
+                Supprimer définitivement
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* =========================================================================
+         MODALS CRUD
+         ========================================================================= */}
+
+      {/* 1. MODAL: INTERVENTION */}
       <Modal
         isOpen={newInterventionModal}
-        onClose={() => setNewInterventionModal(false)}
-        title="Enregistrer une Intervention Atelier"
+        onClose={() => {
+          setNewInterventionModal(false);
+          setEditingIntervention(null);
+        }}
+        title={editingIntervention ? 'Modifier l\'intervention' : 'Enregistrer une Intervention Atelier'}
         subtitle="Mise à jour automatique du carnet d'entretien client"
       >
-        <form onSubmit={handleCreateIntervention} className="space-y-4">
+        <form onSubmit={handleSaveIntervention} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Véhicule client concerné <span className="text-[#D62828]">*</span>
@@ -1687,15 +2443,18 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
 
           <Button type="submit" variant="danger" className="w-full uppercase font-bold text-xs">
-            Valider l'intervention
+            {editingIntervention ? 'Enregistrer les modifications' : 'Valider l\'intervention'}
           </Button>
         </form>
       </Modal>
 
-      {/* MODAL: AJOUTER / MODIFIER PIÈCE */}
+      {/* 2. MODAL: PIÈCE */}
       <Modal
         isOpen={partModalOpen}
-        onClose={() => setPartModalOpen(false)}
+        onClose={() => {
+          setPartModalOpen(false);
+          setEditingPart(null);
+        }}
         title={editingPart ? 'Modifier la pièce' : 'Ajouter une pièce au catalogue'}
       >
         <form onSubmit={handleSavePart} className="space-y-4">
@@ -1787,16 +2546,19 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
 
           <Button type="submit" variant="primary" className="w-full font-bold text-xs uppercase">
-            Enregistrer la référence
+            {editingPart ? 'Enregistrer les modifications' : 'Enregistrer la référence'}
           </Button>
         </form>
       </Modal>
 
-      {/* MODAL: RÉDIGER ARTICLE BLOG */}
+      {/* 3. MODAL: ARTICLE BLOG */}
       <Modal
         isOpen={blogModalOpen}
-        onClose={() => setBlogModalOpen(false)}
-        title="Rédiger un Article de Blog"
+        onClose={() => {
+          setBlogModalOpen(false);
+          setEditingBlog(null);
+        }}
+        title={editingBlog ? 'Modifier l\'article de blog' : 'Rédiger un Article de Blog'}
       >
         <form onSubmit={handleSaveBlogPost} className="space-y-4">
           <div>
@@ -1828,6 +2590,18 @@ export const AdminDashboardPage: React.FC = () => {
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
+              URL Image de couverture
+            </label>
+            <input
+              type="url"
+              value={blogCover}
+              onChange={(e) => setBlogCover(e.target.value)}
+              className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
               Contenu de l'article <span className="text-[#D62828]">*</span>
             </label>
             <textarea
@@ -1841,7 +2615,311 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
 
           <Button type="submit" variant="danger" className="w-full font-bold text-xs uppercase">
-            Publier l'article
+            {editingBlog ? 'Enregistrer les modifications' : 'Publier l\'article'}
+          </Button>
+        </form>
+      </Modal>
+
+      {/* 4. MODAL: VÉHICULE CLIENT */}
+      <Modal
+        isOpen={vehicleModalOpen}
+        onClose={() => {
+          setVehicleModalOpen(false);
+          setEditingVehicle(null);
+        }}
+        title={editingVehicle ? 'Modifier le véhicule client' : 'Ajouter un Véhicule Client'}
+      >
+        <form onSubmit={handleSaveVehicle} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Marque <span className="text-[#D62828]">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={vehBrand}
+                onChange={(e) => setVehBrand(e.target.value)}
+                placeholder="Ex: Toyota"
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Modèle <span className="text-[#D62828]">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={vehModel}
+                onChange={(e) => setVehModel(e.target.value)}
+                placeholder="Ex: Hilux"
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Immatriculation (Plaque) <span className="text-[#D62828]">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={vehPlate}
+                onChange={(e) => setVehPlate(e.target.value)}
+                placeholder="Ex: 8492-HH-01"
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Année
+              </label>
+              <input
+                type="number"
+                value={vehYear}
+                onChange={(e) => setVehYear(Number(e.target.value))}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Kilométrage actuel (km)
+            </label>
+            <input
+              type="number"
+              value={vehMileage}
+              onChange={(e) => setVehMileage(Number(e.target.value))}
+              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+            />
+          </div>
+
+          <Button type="submit" variant="primary" className="w-full font-bold text-xs uppercase">
+            {editingVehicle ? 'Enregistrer les modifications' : 'Enregistrer le véhicule'}
+          </Button>
+        </form>
+      </Modal>
+
+      {/* 5. MODAL: VÉHICULE DE FLOTTE (LOCATION) */}
+      <Modal
+        isOpen={fleetModalOpen}
+        onClose={() => {
+          setFleetModalOpen(false);
+          setEditingFleet(null);
+        }}
+        title={editingFleet ? 'Modifier le véhicule de flotte' : 'Ajouter un Véhicule de Location'}
+      >
+        <form onSubmit={handleSaveFleet} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Nom complet du modèle <span className="text-[#D62828]">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={fleetName}
+              onChange={(e) => setFleetName(e.target.value)}
+              placeholder="Ex: Toyota Land Cruiser Prado TXL"
+              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Tarif / jour (FCFA) <span className="text-[#D62828]">*</span>
+              </label>
+              <input
+                type="number"
+                required
+                value={fleetPricePerDay}
+                onChange={(e) => setFleetPricePerDay(Number(e.target.value))}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 font-bold text-[#1B2A6B]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Caution requise (FCFA)
+              </label>
+              <input
+                type="number"
+                value={fleetDeposit}
+                onChange={(e) => setFleetDeposit(Number(e.target.value))}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              URL Photo principale
+            </label>
+            <input
+              type="url"
+              value={fleetImage}
+              onChange={(e) => setFleetImage(e.target.value)}
+              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+            />
+          </div>
+
+          <Button type="submit" variant="primary" className="w-full font-bold text-xs uppercase">
+            {editingFleet ? 'Enregistrer les modifications' : 'Ajouter à la flotte'}
+          </Button>
+        </form>
+      </Modal>
+
+      {/* 6. MODAL: GALERIE PHOTO */}
+      <Modal
+        isOpen={galleryModalOpen}
+        onClose={() => {
+          setGalleryModalOpen(false);
+          setEditingGallery(null);
+        }}
+        title={editingGallery ? 'Modifier la photo' : 'Ajouter une photo à la Galerie'}
+      >
+        <form onSubmit={handleSaveGallery} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Titre de la réalisation / installation <span className="text-[#D62828]">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={galTitle}
+              onChange={(e) => setGalTitle(e.target.value)}
+              placeholder="Ex: Pont élévateur et banc de diagnostic 3D"
+              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Catégorie
+            </label>
+            <select
+              value={galCategory}
+              onChange={(e) => setGalCategory(e.target.value)}
+              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white"
+            >
+              <option value="Atelier & Équipements">Atelier & Équipements</option>
+              <option value="Mécanique Générale">Mécanique Générale</option>
+              <option value="Diagnostic Électronique">Diagnostic Électronique</option>
+              <option value="Tôlerie & Peinture">Tôlerie & Peinture</option>
+              <option value="Flotte de Véhicules">Flotte de Véhicules</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              URL de l'image (haute résolution) <span className="text-[#D62828]">*</span>
+            </label>
+            <input
+              type="url"
+              required
+              value={galUrl}
+              onChange={(e) => setGalUrl(e.target.value)}
+              placeholder="https://images.unsplash.com/..."
+              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+            />
+          </div>
+
+          <Button type="submit" variant="primary" className="w-full font-bold text-xs uppercase">
+            {editingGallery ? 'Enregistrer les modifications' : 'Ajouter la photo'}
+          </Button>
+        </form>
+      </Modal>
+
+      {/* 7. MODAL: CRÉER COMPTE PERSONNEL (Requis Mission 2.3) */}
+      <Modal
+        isOpen={staffModalOpen}
+        onClose={() => setStaffModalOpen(false)}
+        title="Créer un compte membre du personnel"
+        subtitle="Création sécurisée avec privilèges d'accès à l'atelier"
+      >
+        <form onSubmit={handleCreateStaff} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Nom complet <span className="text-[#D62828]">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={staffName}
+              onChange={(e) => setStaffName(e.target.value)}
+              placeholder="Ex: Kouamé Jean-Baptiste"
+              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Adresse email professionnelle <span className="text-[#D62828]">*</span>
+            </label>
+            <input
+              type="email"
+              required
+              value={staffEmail}
+              onChange={(e) => setStaffEmail(e.target.value)}
+              placeholder="jean.kouame@officina-djeneka.ci"
+              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Numéro de téléphone
+            </label>
+            <input
+              type="tel"
+              value={staffPhone}
+              onChange={(e) => setStaffPhone(e.target.value)}
+              placeholder="+225 07 00 00 00 00"
+              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Rôle attribué <span className="text-[#D62828]">*</span>
+              </label>
+              <select
+                value={staffRole}
+                onChange={(e) => setStaffRole(e.target.value as any)}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white"
+              >
+                <option value="mecanicien">Mécanicien (Atelier)</option>
+                <option value="admin">Administrateur (Complet)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Mot de passe temporaire <span className="text-[#D62828]">*</span>
+              </label>
+              <input
+                type="password"
+                required
+                minLength={8}
+                value={staffPassword}
+                onChange={(e) => setStaffPassword(e.target.value)}
+                placeholder="Minimum 8 caractères"
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+          </div>
+
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full font-bold text-xs uppercase"
+            loading={creatingStaff}
+          >
+            Créer le compte collaborateur
           </Button>
         </form>
       </Modal>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../common/Logo';
+import { useSiteSettings } from '../../context/SiteSettingsContext';
 import {
   MapPin,
   Phone,
@@ -11,9 +12,12 @@ import {
   Instagram,
   ArrowRight,
   Mail,
+  Video,
 } from 'lucide-react';
 
 export const Footer: React.FC = () => {
+  const { settings, cleanPhone } = useSiteSettings();
+  const whatsappNumber = cleanPhone(settings.telephone_whatsapp || '+39 349 080 2320');
   return (
     <footer className="bg-[#131E4D] text-slate-300 pt-16 pb-24 md:pb-12 border-t-4 border-[#D62828]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -22,36 +26,42 @@ export const Footer: React.FC = () => {
           <div className="space-y-4">
             <Logo variant="light" size="md" />
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              <strong>Officina Djeneka (Garage Moderne)</strong>, « Performance & Fiabilité ». Votre centre de référence automobile à Bingerville pour l'entretien, le diagnostic haute technologie, les pièces d'origine et la location de véhicules.
+              <strong>{settings.nom_entreprise}</strong>, « {settings.slogan} ». {settings.description_courte}
             </p>
             <div className="flex items-center gap-3 pt-2">
-              <a
-                href="https://facebook.com"
-                target="_blank"
-                rel="noreferrer"
-                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
-                aria-label="Facebook Officina Djeneka"
-              >
-                <Facebook className="w-4 h-4" />
-              </a>
-              <a
-                href="https://instagram.com"
-                target="_blank"
-                rel="noreferrer"
-                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
-                aria-label="Instagram Officina Djeneka"
-              >
-                <Instagram className="w-4 h-4" />
-              </a>
-              <a
-                href="https://wa.me/393490802320?text=Bonjour%20Officina%20Djeneka,%20je%20souhaite%20un%20renseignement"
-                target="_blank"
-                rel="noreferrer"
-                className="w-9 h-9 rounded-xl bg-[#25D366]/20 hover:bg-[#25D366] text-white flex items-center justify-center transition-colors"
-                aria-label="WhatsApp Officina Djeneka"
-              >
-                <MessageCircle className="w-4 h-4 text-[#25D366] hover:text-white" />
-              </a>
+              {settings.facebook_url && (
+                <a
+                  href={settings.facebook_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                  aria-label="Facebook"
+                >
+                  <Facebook className="w-4 h-4" />
+                </a>
+              )}
+              {settings.instagram_url && (
+                <a
+                  href={settings.instagram_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                  aria-label="Instagram"
+                >
+                  <Instagram className="w-4 h-4" />
+                </a>
+              )}
+              {whatsappNumber && (
+                <a
+                  href={`https://wa.me/${whatsappNumber}?text=Bonjour%20${encodeURIComponent(settings.nom_entreprise)},%20je%20souhaite%20un%20renseignement`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-9 h-9 rounded-xl bg-[#25D366]/20 hover:bg-[#25D366] text-white flex items-center justify-center transition-colors"
+                  aria-label="WhatsApp"
+                >
+                  <MessageCircle className="w-4 h-4 text-[#25D366] hover:text-white" />
+                </a>
+              )}
             </div>
           </div>
 
@@ -117,34 +127,40 @@ export const Footer: React.FC = () => {
               <div className="flex items-start gap-2.5">
                 <MapPin className="w-4 h-4 text-[#D62828] shrink-0 mt-0.5" />
                 <span>
-                  Bingerville, Adjin Palmeraie, Côte d'Ivoire
-                  <span className="block text-slate-400 text-xs mt-0.5">Axe principal vers la lagune</span>
+                  {settings.adresse || 'Bingerville, Adjin Palmeraie'}
+                  <span className="block text-slate-400 text-xs mt-0.5">{settings.ville || 'Côte d’Ivoire'}</span>
                 </span>
               </div>
 
               <div className="flex items-center gap-2.5">
                 <Phone className="w-4 h-4 text-emerald-400 shrink-0" />
-                <a href="tel:+2250778030375" className="hover:text-white font-semibold">
-                  +225 07 78 03 03 75
+                <a href={`tel:${settings.telephone_principal}`} className="hover:text-white font-semibold">
+                  {settings.telephone_principal || '+225 07 78 03 03 75'}
                 </a>
               </div>
 
-              <div className="flex items-center gap-2.5">
-                <MessageCircle className="w-4 h-4 text-[#25D366] shrink-0" />
-                <a
-                  href="https://wa.me/393490802320?text=Bonjour%20Officina%20Djeneka,%20je%20souhaite%20un%20renseignement"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:text-white font-semibold"
-                >
-                  WhatsApp: +39 349 080 2320
-                </a>
-              </div>
+              {whatsappNumber && (
+                <div className="flex items-center gap-2.5">
+                  <MessageCircle className="w-4 h-4 text-[#25D366] shrink-0" />
+                  <a
+                    href={`https://wa.me/${whatsappNumber}?text=Bonjour%20${encodeURIComponent(settings.nom_entreprise)},%20je%20souhaite%20un%20renseignement`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:text-white font-semibold"
+                  >
+                    WhatsApp: {settings.telephone_whatsapp || '+39 349 080 2320'}
+                  </a>
+                </div>
+              )}
 
-              <div className="flex items-center gap-2.5">
-                <Mail className="w-4 h-4 text-blue-300 shrink-0" />
-                <span>contact@officina-djeneka.ci</span>
-              </div>
+              {settings.email && (
+                <div className="flex items-center gap-2.5">
+                  <Mail className="w-4 h-4 text-blue-300 shrink-0" />
+                  <a href={`mailto:${settings.email}`} className="hover:text-white">
+                    {settings.email}
+                  </a>
+                </div>
+              )}
             </div>
           </div>
 
@@ -159,9 +175,9 @@ export const Footer: React.FC = () => {
                 <Clock className="w-4 h-4 text-blue-300 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold text-white">Lundi au Samedi :</p>
-                  <p className="text-slate-300">07h30 - 18h30 (non-stop)</p>
+                  <p className="text-slate-300">{settings.horaires?.lundi || '07h30 - 18h30'}</p>
                   <p className="font-semibold text-white mt-1">Dimanche :</p>
-                  <p className="text-slate-400">Fermé (astreinte dépannage)</p>
+                  <p className="text-slate-400">{settings.horaires?.dimanche || 'Fermé (astreinte dépannage)'}</p>
                 </div>
               </div>
 

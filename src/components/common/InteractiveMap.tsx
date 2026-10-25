@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Button } from './Button';
 import { useToast } from '../../context/ToastContext';
+import { useSiteSettings } from '../../context/SiteSettingsContext';
 
 interface InteractiveMapProps {
   className?: string;
@@ -24,15 +25,17 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   showDetails = true,
 }) => {
   const { showToast } = useToast();
+  const { settings } = useSiteSettings();
   const [mapSource, setMapSource] = useState<'google' | 'osm'>('google');
   const [copied, setCopied] = useState(false);
 
-  // Exact coordinates of Officina Djeneka (Adjin Palmeraie, Bingerville)
-  const latitude = 5.358249;
-  const longitude = -3.896616;
+  // Exact coordinates from dynamic company settings
+  const latitude = settings.latitude || 5.358249;
+  const longitude = settings.longitude || -3.896616;
+  const companyName = settings.nom_entreprise || 'Officina Djeneka - Garage Moderne';
 
   // Universal Google Maps embed URL (works on any domain, Vercel, localhost, no API key needed)
-  const googleEmbedUrl = `https://maps.google.com/maps?q=${latitude},${longitude}+(Officina+Djeneka+Garage+Moderne)&t=&z=15&ie=UTF8&iwloc=&output=embed`;
+  const googleEmbedUrl = `https://maps.google.com/maps?q=${latitude},${longitude}+(${encodeURIComponent(companyName)})&t=&z=15&ie=UTF8&iwloc=&output=embed`;
 
   // OpenStreetMap embed URL (guaranteed 100% uptime, zero tracking/blocking, no third-party cookies)
   const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${longitude - 0.015}%2C${latitude - 0.01}%2C${longitude + 0.015}%2C${latitude + 0.01}&layer=mapnik&marker=${latitude}%2C${longitude}`;
@@ -134,7 +137,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
             <div className="flex items-center gap-2 text-slate-500">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Atelier ouvert : 07h30 - 18h30 (Lun - Sam)</span>
+              <span>{settings.horaires?.['lundi'] ? `Atelier ouvert : ${settings.horaires['lundi']} (Lun - Sam)` : 'Atelier ouvert 07h30 - 18h30 (Lun - Sam)'}</span>
             </div>
           </div>
 
@@ -172,7 +175,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
               </Button>
             </a>
 
-            <a href="tel:+2250778030375" className="w-full">
+            <a href={`tel:${settings.telephone_principal.replace(/[\s\-\(\)]/g, '')}`} className="w-full">
               <Button
                 variant="outline"
                 size="sm"

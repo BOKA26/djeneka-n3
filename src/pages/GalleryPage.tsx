@@ -87,15 +87,15 @@ export const GalleryPage: React.FC = () => {
         <Modal
           isOpen={!!activeItem}
           onClose={() => setActiveItem(null)}
-          title={activeItem.title}
-          subtitle={`Catégorie : ${activeItem.category}`}
+          title={activeItem.title || activeItem.titre || 'Photo atelier'}
+          subtitle={`Catégorie : ${activeItem.category || activeItem.categorie || 'Atelier'}`}
           maxWidth="2xl"
         >
           <div className="space-y-4">
             <div className="h-80 sm:h-96 rounded-2xl overflow-hidden bg-slate-950">
               <img
-                src={activeItem.imageUrl}
-                alt={activeItem.title}
+                src={activeItem.imageUrl || activeItem.image_url || ''}
+                alt={activeItem.title || activeItem.titre || ''}
                 className="w-full h-full object-contain mx-auto"
               />
             </div>

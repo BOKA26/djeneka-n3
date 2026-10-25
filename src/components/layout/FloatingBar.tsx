@@ -1,9 +1,14 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Phone, MessageCircle, AlertTriangle } from 'lucide-react';
+import { useSiteSettings } from '../../context/SiteSettingsContext';
 
 export const FloatingBar: React.FC = () => {
-  const whatsappUrl = 'https://wa.me/393490802320?text=Bonjour%20Officina%20Djeneka,%20je%20souhaite%20un%20renseignement%20ou%20une%20intervention';
+  const { settings, cleanPhone } = useSiteSettings();
+  const rawWhatsapp = settings.telephone_whatsapp || '+39 349 080 2320';
+  const whatsappNum = cleanPhone(rawWhatsapp);
+  const whatsappUrl = `https://wa.me/${whatsappNum}?text=Bonjour%20${encodeURIComponent(settings.nom_entreprise)},%20je%20souhaite%20un%20renseignement%20ou%20une%20intervention`;
+  const telUrl = `tel:${settings.telephone_principal || '+225 07 78 03 03 75'}`;
 
   return (
     <>
@@ -23,7 +28,7 @@ export const FloatingBar: React.FC = () => {
       <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-2xl px-2 py-2 flex items-center gap-2 safe-area-pb">
         {/* Call button */}
         <a
-          href="tel:+2250778030375"
+          href={telUrl}
           className="flex-1 min-h-[48px] bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold transition-colors active:scale-95"
           aria-label="Appeler le garage"
         >

@@ -10,6 +10,7 @@ export interface User {
   avatarUrl?: string;
   notifyEmail: boolean;
   notifyWhatsapp: boolean;
+  actif?: boolean;
 }
 
 export interface ServiceItem {
@@ -185,8 +186,71 @@ export interface BlogPost {
 
 export interface GalleryItem {
   id: string;
-  title: string;
-  category: 'Atelier' | 'Peinture' | 'Polissage' | 'Location';
-  imageUrl: string;
-  description: string;
+  title?: string;
+  category: 'Atelier' | 'Peinture' | 'Polissage' | 'Location' | string;
+  imageUrl?: string;
+  image?: string;
+  description?: string;
+  titre?: string;
+  categorie?: string;
+  image_url?: string;
+  ordre?: number;
+  actif?: boolean;
+  created_at?: string;
+}
+
+export interface SiteSettings {
+  id: number;
+  nom_entreprise: string;
+  slogan: string;
+  description_courte: string;
+  a_propos: string;
+  adresse: string;
+  ville: string;
+  latitude: number;
+  longitude: number;
+  telephone_principal: string;
+  telephone_whatsapp: string;
+  email: string;
+  horaires: {
+    lundi: string;
+    mardi: string;
+    mercredi: string;
+    jeudi: string;
+    vendredi: string;
+    samedi: string;
+    dimanche: string;
+    [key: string]: string;
+  };
+  facebook_url: string;
+  instagram_url: string;
+  tiktok_url?: string;
+  youtube_url?: string;
+  logo_url?: string;
+  favicon_url?: string;
+  image_heros_url?: string;
+  couleur_primaire: string;
+  couleur_accent: string;
+  message_bandeau: string;
+  bandeau_actif: boolean;
+  devise: string;
+  prix_vidange_rapide?: number;
+  seo_titre: string;
+  seo_description: string;
+  mode_maintenance: boolean;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  user_id?: string;
+  user_email?: string;
+  user_role?: string;
+  action: 'INSERT' | 'UPDATE' | 'DELETE' | string;
+  table_name: string;
+  record_id?: string;
+  avant?: Record<string, unknown> | null;
+  apres?: Record<string, unknown> | null;
+  created_at: string;
 }
