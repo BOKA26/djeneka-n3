@@ -42,6 +42,8 @@ import { Modal } from '../../components/common/Modal';
 import { Badge } from '../../components/common/Badge';
 import { CompanySettingsTab } from '../../components/admin/CompanySettingsTab';
 import { AuditLogTab } from '../../components/admin/AuditLogTab';
+import { ImageUploader } from '../../components/ImageUploader';
+import { deleteImagesFromStorage, CAR_SILHOUETTE_PLACEHOLDER } from '../../lib/storage';
 import {
   LayoutDashboard,
   BellRing,
@@ -160,6 +162,8 @@ export const AdminDashboardPage: React.FC = () => {
   const [partPrice, setPartPrice] = useState(25000);
   const [partStatus, setPartStatus] = useState<StockStatus>('in_stock');
   const [partQuantity, setPartQuantity] = useState(5);
+  const [partImageUrl, setPartImageUrl] = useState('');
+  const [isPartUploading, setIsPartUploading] = useState(false);
 
   // 3. Blog Modal
   const [blogModalOpen, setBlogModalOpen] = useState(false);
@@ -168,6 +172,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [blogContent, setBlogContent] = useState('');
   const [blogCategory, setBlogCategory] = useState('Conseils Entretien');
   const [blogCover, setBlogCover] = useState('https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=800&auto=format&fit=crop&q=80');
+  const [isBlogUploading, setIsBlogUploading] = useState(false);
 
   // 4. Client Vehicle Modal
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
@@ -186,13 +191,18 @@ export const AdminDashboardPage: React.FC = () => {
   const [fleetBrand, setFleetBrand] = useState('Toyota');
   const [fleetModel, setFleetModel] = useState('RAV4');
   const [fleetYear, setFleetYear] = useState(2023);
+  const [fleetPlate, setFleetPlate] = useState('8492-HH-01');
   const [fleetCategory, setFleetCategory] = useState<RentalVehicle['category']>('SUV');
   const [fleetSeats, setFleetSeats] = useState(5);
   const [fleetTransmission, setFleetTransmission] = useState<'Automatique' | 'Manuelle'>('Automatique');
   const [fleetFuel, setFleetFuel] = useState<'Essence' | 'Diesel'>('Essence');
+  const [fleetAirConditioned, setFleetAirConditioned] = useState(true);
   const [fleetPricePerDay, setFleetPricePerDay] = useState(45000);
+  const [fleetWeeklyDiscount, setFleetWeeklyDiscount] = useState(15);
   const [fleetDeposit, setFleetDeposit] = useState(150000);
-  const [fleetImage, setFleetImage] = useState('https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=800&auto=format&fit=crop&q=80');
+  const [fleetFeatures, setFleetFeatures] = useState('Climatisation, Bluetooth, Caméra de recul, GPS, Assurance tout risque');
+  const [fleetImages, setFleetImages] = useState<string[]>([]);
+  const [isFleetUploading, setIsFleetUploading] = useState(false);
 
   // 6. Reservation Modal
   const [resModalOpen, setResModalOpen] = useState(false);
@@ -211,9 +221,10 @@ export const AdminDashboardPage: React.FC = () => {
   const [editingGallery, setEditingGallery] = useState<GalleryItem | null>(null);
   const [galTitle, setGalTitle] = useState('');
   const [galCategory, setGalCategory] = useState('Atelier & Équipements');
-  const [galUrl, setGalUrl] = useState('');
   const [galOrder, setGalOrder] = useState(1);
   const [galActive, setGalActive] = useState(true);
+  const [galleryUrls, setGalleryUrls] = useState<string[]>([]);
+  const [isGalleryUploading, setIsGalleryUploading] = useState(false);
 
   // 8. Staff Account Creation Modal
   const [staffModalOpen, setStaffModalOpen] = useState(false);
@@ -520,6 +531,7 @@ export const AdminDashboardPage: React.FC = () => {
           price: Number(partPrice),
           stockStatus: partStatus,
           stockQuantity: Number(partQuantity),
+          imageUrl: partImageUrl || editingPart.imageUrl,
         });
         setParts(parts.map((p) => (p.id === updated.id ? updated : p)));
         showToast('Pièce mise à jour avec succès', 'success');
@@ -535,7 +547,7 @@ export const AdminDashboardPage: React.FC = () => {
           price: Number(partPrice),
           stockStatus: partStatus,
           stockQuantity: Number(partQuantity),
-          imageUrl: 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=400&auto=format&fit=crop&q=80',
+          imageUrl: partImageUrl || 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=400&auto=format&fit=crop&q=80',
           description: 'Pièce neuve enregistrée par le gestionnaire de stock.',
         });
         setParts([created, ...parts]);
@@ -551,9 +563,12 @@ export const AdminDashboardPage: React.FC = () => {
   const handleDeletePart = (p: AutoPart) => {
     triggerDeleteConfirm(
       'Supprimer la pièce du catalogue',
-      'Supprimer définitivement cette référence du stock ? Cette action est irréversible.',
+      'Supprimer définitivement cette référence du stock ? Cette action est irréversible et son média associé sera retiré.',
       `${p.name} (Réf: ${p.reference}) - ${formatFCFA(p.price)}`,
       async () => {
+        if (p.imageUrl) {
+          await deleteImagesFromStorage([p.imageUrl], 'media');
+        }
         await partsApi.delete(p.id);
         setParts(parts.filter((item) => item.id !== p.id));
         showToast('Pièce supprimée du catalogue', 'info');
@@ -619,9 +634,12 @@ export const AdminDashboardPage: React.FC = () => {
   const handleDeleteBlog = (post: BlogPost) => {
     triggerDeleteConfirm(
       'Supprimer l\'article de blog',
-      'Supprimer définitivement cet article du site ? Cette action est irréversible.',
+      'Supprimer définitivement cet article du site ? Le média de couverture sera également retiré du stockage.',
       `"${post.title}" (${post.category})`,
       async () => {
+        if (post.coverImage) {
+          await deleteImagesFromStorage([post.coverImage], 'media');
+        }
         await blogApi.delete(post.id);
         setBlogPosts(blogPosts.filter((b) => b.id !== post.id));
         showToast('Article supprimé avec succès', 'info');
@@ -636,9 +654,18 @@ export const AdminDashboardPage: React.FC = () => {
       if (editingFleet) {
         const updated = await rentalsApi.update(editingFleet.id, {
           name: fleetName,
+          brand: fleetBrand,
+          model: fleetModel,
+          year: Number(fleetYear),
+          category: fleetCategory,
+          seats: Number(fleetSeats),
+          transmission: fleetTransmission,
+          fuel: fleetFuel,
+          airConditioned: fleetAirConditioned,
           pricePerDay: Number(fleetPricePerDay),
           deposit: Number(fleetDeposit),
-          images: [fleetImage],
+          weeklyDiscountPercent: fleetWeeklyDiscount || 12,
+          images: fleetImages,
         });
         setFleet(fleet.map((v) => (v.id === updated.id ? updated : v)));
         showToast('Véhicule de flotte mis à jour', 'success');
@@ -652,12 +679,12 @@ export const AdminDashboardPage: React.FC = () => {
           seats: Number(fleetSeats),
           transmission: fleetTransmission,
           fuel: fleetFuel,
-          airConditioned: true,
+          airConditioned: fleetAirConditioned,
           pricePerDay: Number(fleetPricePerDay),
-          weeklyDiscountPercent: 12,
+          weeklyDiscountPercent: fleetWeeklyDiscount || 12,
           deposit: Number(fleetDeposit),
-          images: [fleetImage],
-          features: ['Climatisation', 'Bluetooth', 'GPS', 'Assurance tout risque'],
+          images: fleetImages,
+          features: fleetFeatures ? fleetFeatures.split(',').map((f) => f.trim()) : ['Climatisation', 'Bluetooth', 'GPS', 'Assurance tout risque'],
           unavailableDates: [],
         });
         setFleet([created, ...fleet]);
@@ -673,12 +700,15 @@ export const AdminDashboardPage: React.FC = () => {
   const handleDeleteFleet = (v: RentalVehicle) => {
     triggerDeleteConfirm(
       'Supprimer le véhicule de location',
-      'Supprimer définitivement ce véhicule de la flotte ? Ses réservations archivées resteront visibles.',
+      'Supprimer définitivement ce véhicule de la flotte ? Ses réservations archivées resteront visibles et ses photos associées seront retirées du stockage.',
       `${v.name} (${v.category}) - ${formatFCFA(v.pricePerDay)}/j`,
       async () => {
+        if (v.images && v.images.length > 0) {
+          await deleteImagesFromStorage(v.images, 'media');
+        }
         await rentalsApi.delete(v.id);
         setFleet(fleet.filter((item) => item.id !== v.id));
-        showToast('Véhicule retiré de la flotte', 'info');
+        showToast('Véhicule retiré de la flotte et médias nettoyés', 'info');
       }
     );
   };
@@ -741,31 +771,42 @@ export const AdminDashboardPage: React.FC = () => {
   // Gallery CRUD
   const handleSaveGallery = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (galleryUrls.length === 0) {
+      showToast('Veuillez ajouter au moins une photo pour la galerie.', 'error');
+      return;
+    }
     try {
       if (editingGallery) {
+        const photoUrl = galleryUrls[0];
         const updated = await galleryApi.update(editingGallery.id, {
           titre: galTitle,
           categorie: galCategory,
-          image_url: galUrl,
+          image_url: photoUrl,
           ordre: Number(galOrder),
           actif: galActive,
         });
         setGalleryItems(galleryItems.map((g) => (g.id === updated.id ? updated : g)));
         showToast('Photo de galerie mise à jour', 'success');
       } else {
-        const created = await galleryApi.create({
-          title: galTitle,
-          category: galCategory,
-          imageUrl: galUrl,
-          titre: galTitle,
-          categorie: galCategory,
-          image_url: galUrl,
-          description: '',
-          ordre: Number(galOrder),
-          actif: galActive,
-        });
-        setGalleryItems([created, ...galleryItems]);
-        showToast('Photo ajoutée à la galerie publique', 'success');
+        const createdItems: GalleryItem[] = [];
+        for (let i = 0; i < galleryUrls.length; i++) {
+          const url = galleryUrls[i];
+          const itemTitle = galleryUrls.length === 1 ? galTitle : `${galTitle} (${i + 1})`;
+          const created = await galleryApi.create({
+            title: itemTitle,
+            category: galCategory,
+            imageUrl: url,
+            titre: itemTitle,
+            categorie: galCategory,
+            image_url: url,
+            description: '',
+            ordre: Number(galOrder) + i,
+            actif: galActive,
+          });
+          createdItems.push(created);
+        }
+        setGalleryItems([...createdItems, ...galleryItems]);
+        showToast(`${createdItems.length} photo(s) ajoutée(s) à la galerie publique`, 'success');
       }
       setGalleryModalOpen(false);
       setEditingGallery(null);
@@ -777,12 +818,16 @@ export const AdminDashboardPage: React.FC = () => {
   const handleDeleteGallery = (g: GalleryItem) => {
     triggerDeleteConfirm(
       'Supprimer la photo de la galerie',
-      'Supprimer définitivement cette photo de la galerie du site ?',
+      'Supprimer définitivement cette photo de la galerie du site ? Le fichier média sera également nettoyé du stockage.',
       `Photo : ${g.titre || g.title || 'Sans titre'} (${g.categorie || g.category})`,
       async () => {
+        const url = g.image_url || g.imageUrl;
+        if (url) {
+          await deleteImagesFromStorage([url], 'media');
+        }
         await galleryApi.delete(g.id);
         setGalleryItems(galleryItems.filter((item) => item.id !== g.id));
-        showToast('Photo supprimée de la galerie', 'info');
+        showToast('Photo supprimée de la galerie et du stockage', 'info');
       }
     );
   };
@@ -1160,8 +1205,19 @@ export const AdminDashboardPage: React.FC = () => {
                           <span className="font-bold text-sm text-slate-900">{em.clientName}</span>
                           <StatusPill status={em.status} type="emergency" />
                         </div>
-                        <p className="text-xs text-slate-600">
-                          📍 {em.locationName} • Panne : <strong>{em.breakdownType}</strong> ({em.vehicleDetails})
+                        <p className="text-xs text-slate-600 flex flex-wrap items-center gap-1.5">
+                          <span>📍 {em.locationName} • Panne : <strong>{em.breakdownType}</strong> ({em.vehicleDetails})</span>
+                          {em.coordinates && (
+                            <a
+                              href={`https://www.google.com/maps?q=${em.coordinates.lat},${em.coordinates.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition-colors"
+                            >
+                              <span>GPS Maps</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
                         </p>
                         <p className="text-xs text-[#1B2A6B] font-semibold">📞 {em.clientPhone}</p>
                       </div>
@@ -1223,8 +1279,19 @@ export const AdminDashboardPage: React.FC = () => {
                           <span className="text-xs text-slate-500">({em.clientPhone})</span>
                           <StatusPill status={em.status} type="emergency" />
                         </div>
-                        <p className="text-xs text-slate-700">
-                          <strong>Lieu :</strong> {em.locationName}
+                        <p className="text-xs text-slate-700 flex flex-wrap items-center gap-1.5">
+                          <span><strong>Lieu :</strong> {em.locationName}</span>
+                          {em.coordinates && (
+                            <a
+                              href={`https://www.google.com/maps?q=${em.coordinates.lat},${em.coordinates.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition-colors"
+                            >
+                              <span>Ouvrir sur Google Maps</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
                         </p>
                         <p className="text-xs text-slate-500">
                           Véhicule : {em.vehicleDetails} • Date : {formatDateFR(em.createdAt)}
@@ -1542,8 +1609,16 @@ export const AdminDashboardPage: React.FC = () => {
                     setFleetName('');
                     setFleetBrand('Toyota');
                     setFleetModel('');
+                    setFleetYear(2023);
+                    setFleetCategory('SUV');
+                    setFleetSeats(5);
+                    setFleetTransmission('Automatique');
+                    setFleetFuel('Essence');
+                    setFleetAirConditioned(true);
                     setFleetPricePerDay(45000);
+                    setFleetWeeklyDiscount(12);
                     setFleetDeposit(150000);
+                    setFleetImages([]);
                     setFleetModalOpen(true);
                   }}
                 >
@@ -1560,9 +1635,10 @@ export const AdminDashboardPage: React.FC = () => {
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
                         <img
-                          src={v.images[0]}
+                          src={v.images?.[0] || CAR_SILHOUETTE_PLACEHOLDER}
                           alt={v.name}
-                          className="w-20 h-16 rounded-2xl object-cover bg-slate-900 shrink-0"
+                          loading="lazy"
+                          className="w-20 h-16 rounded-2xl object-cover bg-slate-100 border border-slate-200 shrink-0"
                         />
                         <div>
                           <h4 className="font-bold text-sm text-slate-900">{v.name}</h4>
@@ -1580,9 +1656,18 @@ export const AdminDashboardPage: React.FC = () => {
                           onClick={() => {
                             setEditingFleet(v);
                             setFleetName(v.name);
+                            setFleetBrand(v.brand || 'Toyota');
+                            setFleetModel(v.model || '');
+                            setFleetYear(v.year || 2023);
+                            setFleetCategory(v.category || 'SUV');
+                            setFleetSeats(v.seats || 5);
+                            setFleetTransmission(v.transmission || 'Automatique');
+                            setFleetFuel(v.fuel || 'Essence');
+                            setFleetAirConditioned(v.airConditioned ?? true);
                             setFleetPricePerDay(v.pricePerDay);
+                            setFleetWeeklyDiscount(v.weeklyDiscountPercent || 12);
                             setFleetDeposit(v.deposit);
-                            setFleetImage(v.images[0] || '');
+                            setFleetImages(v.images && v.images.length > 0 ? v.images : []);
                             setFleetModalOpen(true);
                           }}
                           title="Modifier véhicule"
@@ -1774,6 +1859,7 @@ export const AdminDashboardPage: React.FC = () => {
                       setPartRef('');
                       setPartPrice(25000);
                       setPartQuantity(5);
+                      setPartImageUrl('');
                       setPartModalOpen(true);
                     }}
                   >
@@ -1841,6 +1927,7 @@ export const AdminDashboardPage: React.FC = () => {
                               setPartPrice(p.price);
                               setPartStatus(p.stockStatus);
                               setPartQuantity(p.stockQuantity);
+                              setPartImageUrl(p.imageUrl || '');
                               setPartModalOpen(true);
                             }}
                           >
@@ -1941,6 +2028,7 @@ export const AdminDashboardPage: React.FC = () => {
                     setEditingBlog(null);
                     setBlogTitle('');
                     setBlogContent('');
+                    setBlogCover('');
                     setBlogModalOpen(true);
                   }}
                 >
@@ -1973,6 +2061,7 @@ export const AdminDashboardPage: React.FC = () => {
                           setBlogTitle(post.title);
                           setBlogContent(post.content);
                           setBlogCategory(post.category);
+                          setBlogCover(post.coverImage || '');
                           setBlogModalOpen(true);
                         }}
                         title="Modifier l'article"
@@ -2010,8 +2099,10 @@ export const AdminDashboardPage: React.FC = () => {
                   onClick={() => {
                     setEditingGallery(null);
                     setGalTitle('');
-                    setGalUrl('https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=800&auto=format&fit=crop&q=80');
+                    setGalleryUrls([]);
                     setGalCategory('Atelier & Équipements');
+                    setGalOrder(galleryItems.length + 1);
+                    setGalActive(true);
                     setGalleryModalOpen(true);
                   }}
                 >
@@ -2062,8 +2153,11 @@ export const AdminDashboardPage: React.FC = () => {
                             onClick={() => {
                               setEditingGallery(item);
                               setGalTitle(item.titre || item.title || '');
-                              setGalCategory(item.categorie || item.category || 'Atelier');
-                              setGalUrl(item.image_url || item.imageUrl || '');
+                              setGalCategory(item.categorie || item.category || 'Atelier & Équipements');
+                              const existingUrl = item.image_url || item.imageUrl || '';
+                              setGalleryUrls(existingUrl ? [existingUrl] : []);
+                              setGalOrder(item.ordre ?? 1);
+                              setGalActive(item.actif ?? true);
                               setGalleryModalOpen(true);
                             }}
                           />
@@ -2545,8 +2639,29 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
           </div>
 
-          <Button type="submit" variant="primary" className="w-full font-bold text-xs uppercase">
-            {editingPart ? 'Enregistrer les modifications' : 'Enregistrer la référence'}
+          <div>
+            <ImageUploader
+              folder="parts"
+              multiple={false}
+              maxFiles={1}
+              label="Photo de la pièce détachée"
+              value={partImageUrl ? [partImageUrl] : []}
+              onChange={(urls) => setPartImageUrl(urls[0] || '')}
+              onUploadingChange={setIsPartUploading}
+            />
+          </div>
+
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full font-bold text-xs uppercase"
+            disabled={isPartUploading}
+          >
+            {isPartUploading
+              ? 'Envoi de la photo...'
+              : editingPart
+              ? 'Enregistrer les modifications'
+              : 'Enregistrer la référence'}
           </Button>
         </form>
       </Modal>
@@ -2589,14 +2704,14 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              URL Image de couverture
-            </label>
-            <input
-              type="url"
-              value={blogCover}
-              onChange={(e) => setBlogCover(e.target.value)}
-              className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300"
+            <ImageUploader
+              folder="blog"
+              multiple={false}
+              maxFiles={1}
+              label="Image de couverture de l'article"
+              value={blogCover ? [blogCover] : []}
+              onChange={(urls) => setBlogCover(urls[0] || '')}
+              onUploadingChange={setIsBlogUploading}
             />
           </div>
 
@@ -2614,8 +2729,17 @@ export const AdminDashboardPage: React.FC = () => {
             />
           </div>
 
-          <Button type="submit" variant="danger" className="w-full font-bold text-xs uppercase">
-            {editingBlog ? 'Enregistrer les modifications' : 'Publier l\'article'}
+          <Button
+            type="submit"
+            variant="danger"
+            className="w-full font-bold text-xs uppercase"
+            disabled={isBlogUploading}
+          >
+            {isBlogUploading
+              ? "Envoi de l'image..."
+              : editingBlog
+              ? 'Enregistrer les modifications'
+              : "Publier l'article"}
           </Button>
         </form>
       </Modal>
@@ -2716,7 +2840,7 @@ export const AdminDashboardPage: React.FC = () => {
         <form onSubmit={handleSaveFleet} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Nom complet du modèle <span className="text-[#D62828]">*</span>
+              Nom commercial / Titre <span className="text-[#D62828]">*</span>
             </label>
             <input
               type="text"
@@ -2728,7 +2852,100 @@ export const AdminDashboardPage: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Marque</label>
+              <input
+                type="text"
+                required
+                value={fleetBrand}
+                onChange={(e) => setFleetBrand(e.target.value)}
+                placeholder="Ex: Toyota"
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Modèle</label>
+              <input
+                type="text"
+                required
+                value={fleetModel}
+                onChange={(e) => setFleetModel(e.target.value)}
+                placeholder="Ex: Prado TXL"
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Année</label>
+              <input
+                type="number"
+                value={fleetYear}
+                onChange={(e) => setFleetYear(Number(e.target.value))}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Immatriculation</label>
+              <input
+                type="text"
+                value={fleetPlate}
+                onChange={(e) => setFleetPlate(e.target.value)}
+                placeholder="Ex: 8492-HH-01"
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Catégorie</label>
+              <select
+                value={fleetCategory}
+                onChange={(e) => setFleetCategory(e.target.value as any)}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white"
+              >
+                <option value="Économique">Économique</option>
+                <option value="Berline">Berline</option>
+                <option value="SUV">SUV</option>
+                <option value="Pick-up">Pick-up</option>
+                <option value="Luxe">Luxe</option>
+                <option value="Utilitaire">Utilitaire</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Places</label>
+              <input
+                type="number"
+                value={fleetSeats}
+                onChange={(e) => setFleetSeats(Number(e.target.value))}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Boîte</label>
+              <select
+                value={fleetTransmission}
+                onChange={(e) => setFleetTransmission(e.target.value as any)}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white"
+              >
+                <option value="Automatique">Automatique</option>
+                <option value="Manuelle">Manuelle</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Carburant</label>
+              <select
+                value={fleetFuel}
+                onChange={(e) => setFleetFuel(e.target.value as any)}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white"
+              >
+                <option value="Essence">Essence</option>
+                <option value="Diesel">Diesel</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Tarif / jour (FCFA) <span className="text-[#D62828]">*</span>
@@ -2739,6 +2956,17 @@ export const AdminDashboardPage: React.FC = () => {
                 value={fleetPricePerDay}
                 onChange={(e) => setFleetPricePerDay(Number(e.target.value))}
                 className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 font-bold text-[#1B2A6B]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Remise semaine (%)
+              </label>
+              <input
+                type="number"
+                value={fleetWeeklyDiscount}
+                onChange={(e) => setFleetWeeklyDiscount(Number(e.target.value))}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
               />
             </div>
             <div>
@@ -2756,18 +2984,40 @@ export const AdminDashboardPage: React.FC = () => {
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              URL Photo principale
+              Équipements & Options (séparés par virgule)
             </label>
             <input
-              type="url"
-              value={fleetImage}
-              onChange={(e) => setFleetImage(e.target.value)}
+              type="text"
+              value={fleetFeatures}
+              onChange={(e) => setFleetFeatures(e.target.value)}
+              placeholder="Climatisation, Bluetooth, Caméra de recul, GPS, Assurance tout risque"
               className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
             />
           </div>
 
-          <Button type="submit" variant="primary" className="w-full font-bold text-xs uppercase">
-            {editingFleet ? 'Enregistrer les modifications' : 'Ajouter à la flotte'}
+          <div>
+            <ImageUploader
+              folder="rental"
+              multiple={true}
+              maxFiles={8}
+              label="Photos du véhicule de location (max 8, la première est la photo principale)"
+              value={fleetImages}
+              onChange={setFleetImages}
+              onUploadingChange={setIsFleetUploading}
+            />
+          </div>
+
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full font-bold text-xs uppercase"
+            disabled={isFleetUploading}
+          >
+            {isFleetUploading
+              ? 'Envoi des photos en cours...'
+              : editingFleet
+              ? 'Enregistrer les modifications'
+              : 'Ajouter à la flotte'}
           </Button>
         </form>
       </Modal>
@@ -2814,21 +3064,28 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              URL de l'image (haute résolution) <span className="text-[#D62828]">*</span>
-            </label>
-            <input
-              type="url"
-              required
-              value={galUrl}
-              onChange={(e) => setGalUrl(e.target.value)}
-              placeholder="https://images.unsplash.com/..."
-              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300"
+            <ImageUploader
+              folder="gallery"
+              multiple={!editingGallery}
+              maxFiles={10}
+              label={editingGallery ? "Photo de la galerie" : "Photo(s) pour la galerie (sélection multiple possible)"}
+              value={galleryUrls}
+              onChange={setGalleryUrls}
+              onUploadingChange={setIsGalleryUploading}
             />
           </div>
 
-          <Button type="submit" variant="primary" className="w-full font-bold text-xs uppercase">
-            {editingGallery ? 'Enregistrer les modifications' : 'Ajouter la photo'}
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full font-bold text-xs uppercase"
+            disabled={isGalleryUploading}
+          >
+            {isGalleryUploading
+              ? 'Envoi des photos en cours...'
+              : editingGallery
+              ? 'Enregistrer les modifications'
+              : 'Ajouter à la galerie'}
           </Button>
         </form>
       </Modal>

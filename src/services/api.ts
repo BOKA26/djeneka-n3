@@ -594,7 +594,7 @@ export const rentalsApi = {
         ? Math.max(5, Math.round((1 - Number(d.prix_semaine) / (Number(d.prix_jour) * 7)) * 100))
         : 15,
       deposit: Number(d.caution || 150000),
-      images: d.photos || [],
+      images: (d.photos && d.photos.length > 0) ? d.photos : (d.photo_principale ? [d.photo_principale] : []),
       features: d.caracteristiques || [],
       unavailableDates: [],
     }));
@@ -628,7 +628,7 @@ export const rentalsApi = {
         ? Math.max(5, Math.round((1 - Number(data.prix_semaine) / (Number(data.prix_jour) * 7)) * 100))
         : 15,
       deposit: Number(data.caution || 150000),
-      images: data.photos || [],
+      images: (data.photos && data.photos.length > 0) ? data.photos : (data.photo_principale ? [data.photo_principale] : []),
       features: data.caracteristiques || [],
       unavailableDates: unavDates,
     };
@@ -685,7 +685,8 @@ export const rentalsApi = {
           ? Math.round(data.pricePerDay * 7 * (1 - data.weeklyDiscountPercent / 100))
           : null,
         caution: data.deposit,
-        photos: data.images,
+        photo_principale: (data.images && data.images[0]) || null,
+        photos: data.images || [],
         caracteristiques: data.features,
         statut: 'disponible',
       })
@@ -710,7 +711,7 @@ export const rentalsApi = {
       pricePerDay: Number(created.prix_jour),
       weeklyDiscountPercent: data.weeklyDiscountPercent,
       deposit: Number(created.caution),
-      images: created.photos || [],
+      images: (created.photos && created.photos.length > 0) ? created.photos : (created.photo_principale ? [created.photo_principale] : []),
       features: created.caracteristiques || [],
       unavailableDates: [],
     };
@@ -722,7 +723,10 @@ export const rentalsApi = {
     if (updates.pricePerDay !== undefined) payload.prix_jour = updates.pricePerDay;
     if (updates.deposit !== undefined) payload.caution = updates.deposit;
     if (updates.features !== undefined) payload.caracteristiques = updates.features;
-    if (updates.images !== undefined) payload.photos = updates.images;
+    if (updates.images !== undefined) {
+      payload.photos = updates.images;
+      payload.photo_principale = (updates.images && updates.images[0]) || null;
+    }
 
     const { data, error } = await supabase
       .from('rental_vehicles')

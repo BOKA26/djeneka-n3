@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { RentalVehicle } from '../types';
 import { rentalsApi } from '../services/api';
 import { formatFCFA } from '../utils/format';
+import { CAR_SILHOUETTE_PLACEHOLDER } from '../lib/storage';
 import { ReservationCalendar } from '../components/rentals/ReservationCalendar';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
@@ -74,10 +75,11 @@ export const RentalDetailPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left: Photos Gallery */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="relative h-72 sm:h-96 rounded-3xl overflow-hidden bg-slate-900 border border-slate-200 shadow-sm">
+          <div className="relative h-72 sm:h-96 rounded-3xl overflow-hidden bg-slate-100 border border-slate-200 shadow-sm">
             <img
-              src={vehicle.images[activeImageIndex] || vehicle.images[0]}
+              src={vehicle.images?.[activeImageIndex] || vehicle.images?.[0] || CAR_SILHOUETTE_PLACEHOLDER}
               alt={vehicle.name}
+              loading="lazy"
               className="w-full h-full object-cover"
             />
             <div className="absolute top-4 left-4">

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { RentalVehicle } from '../types';
 import { rentalsApi } from '../services/api';
 import { formatFCFA } from '../utils/format';
+import { CAR_SILHOUETTE_PLACEHOLDER } from '../lib/storage';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import {
@@ -69,10 +70,11 @@ export const RentalsPage: React.FC = () => {
           >
             <div>
               {/* Image banner */}
-              <div className="relative h-56 bg-slate-900 overflow-hidden">
+              <div className="relative h-56 bg-slate-100 overflow-hidden">
                 <img
-                  src={vehicle.images[0]}
+                  src={vehicle.images?.[0] || CAR_SILHOUETTE_PLACEHOLDER}
                   alt={vehicle.name}
+                  loading="lazy"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
                 <div className="absolute top-3 left-3">

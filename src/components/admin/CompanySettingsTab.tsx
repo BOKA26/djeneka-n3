@@ -19,6 +19,7 @@ import { SiteSettings } from '../../types';
 import { useSiteSettings } from '../../context/SiteSettingsContext';
 import { useToast } from '../../context/ToastContext';
 import { Button } from '../common/Button';
+import { ImageUploader } from '../ImageUploader';
 
 export const CompanySettingsTab: React.FC = () => {
   const { settings, updateSettings, loading } = useSiteSettings();
@@ -158,8 +159,36 @@ export const CompanySettingsTab: React.FC = () => {
         {activeSubTab === 'identity' && (
           <div className="space-y-6">
             <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
-              Identité de l'établissement
+              Identité & Logo de l'établissement
             </h3>
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+              <ImageUploader
+                bucket="media"
+                folder="site"
+                multiple={false}
+                maxFiles={1}
+                label="Logo officiel du garage"
+                helperText="Envoyez le logo officiel depuis votre ordinateur ou téléphone (PNG transparent ou WebP recommandé). Il s'affichera instantanément dans l'en-tête, le pied de page et les devis."
+                value={formData.logo_url ? [formData.logo_url] : []}
+                onChange={(urls) => handleChange('logo_url', urls[0] || '')}
+              />
+              {formData.logo_url && (
+                <div className="flex items-center gap-3 pt-2 border-t border-slate-200">
+                  <span className="text-xs text-slate-500 font-medium">Aperçu direct du logo :</span>
+                  <div className="p-2 rounded-xl bg-white border border-slate-200 shadow-xs inline-flex items-center">
+                    <img
+                      src={formData.logo_url}
+                      alt="Aperçu logo"
+                      className="h-10 object-contain max-w-[160px]"
+                    />
+                  </div>
+                  <span className="text-[11px] text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    Logo actif
+                  </span>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
@@ -496,31 +525,31 @@ export const CompanySettingsTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Media URLs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  URL du Logo personnalisé (optionnel)
-                </label>
-                <input
-                  type="url"
-                  value={formData.logo_url || ''}
-                  onChange={(e) => handleChange('logo_url', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#1B2A6B] text-sm"
-                  placeholder="https://.../logo.png (vide = logo par défaut)"
+            {/* Photos & Visuels */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <ImageUploader
+                  bucket="media"
+                  folder="site"
+                  multiple={false}
+                  maxFiles={1}
+                  label="Logo du garage"
+                  helperText="Format carré ou horizontal, PNG transparent recommandé."
+                  value={formData.logo_url ? [formData.logo_url] : []}
+                  onChange={(urls) => handleChange('logo_url', urls[0] || '')}
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  URL de l'image de couverture d'accueil (Hero)
-                </label>
-                <input
-                  type="url"
-                  value={formData.image_heros_url || ''}
-                  onChange={(e) => handleChange('image_heros_url', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#1B2A6B] text-sm"
-                  placeholder="https://images.unsplash.com/..."
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <ImageUploader
+                  bucket="media"
+                  folder="site"
+                  multiple={false}
+                  maxFiles={1}
+                  label="Image de couverture d'accueil (Hero Banner)"
+                  helperText="Photo grand angle de l'atelier ou de véhicules récents (1600x900 recommandé)."
+                  value={formData.image_heros_url ? [formData.image_heros_url] : []}
+                  onChange={(urls) => handleChange('image_heros_url', urls[0] || '')}
                 />
               </div>
             </div>
